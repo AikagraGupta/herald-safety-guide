@@ -130,7 +130,7 @@ async function initializeSession(config: AtlasConfig, signal: AbortSignal) {
         protocolVersion: "2024-11-05",
         capabilities: {},
         clientInfo: {
-          name: "herald-safety-guide",
+          name: "sifu-safety-guide",
           version: "0.1.0",
         },
       },

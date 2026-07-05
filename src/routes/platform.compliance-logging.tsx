@@ -5,13 +5,13 @@ import { ComplianceLogMock } from "@/components/product-mocks";
 export const Route = createFileRoute("/platform/compliance-logging")({
   head: () => ({
     meta: [
-      { title: "Compliance Logging — Herald" },
+      { title: "Compliance Logging — Sifu" },
       {
         name: "description",
         content:
           "Supervisor escalation, immutable event log, and exportable audit trail for site safety decisions.",
       },
-      { property: "og:title", content: "Compliance Logging — Herald" },
+      { property: "og:title", content: "Compliance Logging — Sifu" },
       {
         property: "og:description",
         content: "Audit-ready records of every worker question, decision, and escalation.",
@@ -27,7 +27,7 @@ function Compliance() {
       <PageHeader
         eyebrow="Compliance Logging"
         title="An audit trail your inspector will actually accept."
-        lead="Every worker question, every Herald decision, every supervisor override — written to an immutable log with cited sources. Exportable per site, per shift, per worker."
+        lead="Every worker question, every Sifu decision, every supervisor override — written to an immutable log with cited sources. Exportable per site, per shift, per worker."
       />
       <section className="mx-auto max-w-7xl px-6 pb-16">
         <ComplianceLogMock />

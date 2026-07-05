@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LiveSafetyDemo } from "@/components/live-safety-demo";
-import { HeraldMark } from "@/components/site-header";
+import { SifuMark } from "@/components/site-header";
 
 export const Route = createFileRoute("/")({
   component: Home,
@@ -12,9 +12,9 @@ function Home() {
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-3 py-3 sm:px-5 sm:py-5">
         <header className="mb-3 flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[color-mix(in_oklab,var(--panel)_92%,transparent)] px-3 py-2 backdrop-blur-md">
           <div className="flex min-w-0 items-center gap-2.5">
-            <HeraldMark />
+            <SifuMark />
             <div className="min-w-0">
-              <div className="text-[15px] font-semibold leading-tight text-foreground">Herald</div>
+              <div className="text-[15px] font-semibold leading-tight text-foreground">Sifu</div>
               <div className="truncate text-[10.5px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                 AI for Physical Workers
               </div>

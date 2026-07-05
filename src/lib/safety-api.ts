@@ -8,7 +8,7 @@ type Citation = {
 };
 
 type ConversationTurn = {
-  role: "worker" | "herald";
+  role: "worker" | "sifu";
   content: string;
   risk?: Risk;
 };
@@ -126,7 +126,7 @@ function normalizeHistory(value: unknown): ConversationTurn[] {
     .slice(-8)
     .map((turn) => {
       const item = turn as Record<string, unknown>;
-      const role = item.role === "herald" ? "herald" : item.role === "worker" ? "worker" : null;
+      const role = item.role === "sifu" ? "sifu" : item.role === "worker" ? "worker" : null;
       const content = typeof item.content === "string" ? item.content.trim() : "";
       const risk = item.risk && ["STOP", "CHECK", "OK", "ASK"].includes(String(item.risk)) ? (String(item.risk) as Risk) : undefined;
       if (!role || !content) return null;
@@ -141,7 +141,7 @@ function formatHistory(history: ConversationTurn[]) {
   return [
     "Conversation so far:",
     ...history.map((turn, index) => {
-      const speaker = turn.role === "worker" ? "Worker" : "Herald";
+      const speaker = turn.role === "worker" ? "Worker" : "Sifu";
       const risk = turn.risk ? ` (${turn.risk})` : "";
       return `${index + 1}. ${speaker}${risk}: ${turn.content}`;
     }),
@@ -152,10 +152,10 @@ function buildPrompt(question: string, language: LanguageMode, hasImage: boolean
   const outputLanguage = language === "yue" ? "Cantonese, Hong Kong style" : "English";
 
   return [
-    "You are Herald, an AI safety copilot for physical workers: firefighters, EMTs, utility crews, warehouse teams, maintenance workers, construction crews, facilities staff, and field operators.",
+    "You are Sifu, an AI safety copilot for physical workers: firefighters, EMTs, utility crews, warehouse teams, maintenance workers, construction crews, facilities staff, and field operators.",
     "Use the worker's natural-language question, any attached image, and the Votee safety source pack below. The Votee pack is the cited safety memory. The hosted LLM is the reasoning engine.",
-    "Use the conversation so far as short-term memory. If the latest worker message is a follow-up, combine it with the previous question and Herald answer before deciding.",
-    "When Herald previously asked for more context and the worker now provides it, make the final safety call if enough context is available. If context is still missing, ask only for the missing details.",
+    "Use the conversation so far as short-term memory. If the latest worker message is a follow-up, combine it with the previous question and Sifu answer before deciding.",
+    "When Sifu previously asked for more context and the worker now provides it, make the final safety call if enough context is available. If context is still missing, ask only for the missing details.",
     "If an image is attached, inspect it for hazards and OCR any visible labels, signs, panels, gauges, permits, tags, warnings, or written instructions. Put only relevant OCR/visual observations in observedText.",
     "Do not use canned examples. Make a fresh decision for this exact situation.",
     "If the question or image lacks enough context, choose ASK and ask for the missing details instead of guessing.",
@@ -348,7 +348,7 @@ function safeFallbackDecision(question: string, language: LanguageMode, reason: 
         ? ["Keep people away from the wet area and the panel.", "Ask a supervisor or qualified electrical worker to isolate, lock out, tag, and test the panel.", "Dry and control the area before any panel access resumes."]
         : ["Pause and keep a safe distance.", "Add the location, intended action, visible hazard, or a photo.", "If electricity, fire, smoke, gas, height, or confined space is involved, notify a supervisor."],
     reasoning: [
-      "The hosted model response could not be safely structured, so Herald used a conservative safety fallback.",
+      "The hosted model response could not be safely structured, so Sifu used a conservative safety fallback.",
       electricalWet
         ? "OCR or worker text indicates wet-floor and live-electrical-panel risk."
         : highRisk
@@ -604,7 +604,7 @@ async function askReasoningModel(question: string, language: LanguageMode, image
           {
             role: "system",
             content:
-              "You are Herald. Return one valid JSON object only. Do not use arrays, markdown, comments, or trailing commas.",
+              "You are Sifu. Return one valid JSON object only. Do not use arrays, markdown, comments, or trailing commas.",
           },
           {
             role: "user",
@@ -631,7 +631,7 @@ async function askReasoningModel(question: string, language: LanguageMode, image
 
   const decision =
     parseLooseDecision(outputText) ??
-    safeFallbackWithOcr(question, language, "The hosted model returned malformed JSON, so Herald did not expose the parsing error.", imageOcrText);
+    safeFallbackWithOcr(question, language, "The hosted model returned malformed JSON, so Sifu did not expose the parsing error.", imageOcrText);
 
   decision.provider = "pollinations";
 

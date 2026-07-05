@@ -53,13 +53,13 @@ type AskResult = {
 type LanguageMode = "yue" | "en";
 
 type ChatTurn = {
-  role: "worker" | "herald";
+  role: "worker" | "sifu";
   content: string;
   risk?: AskResult["risk"];
   time: string;
 };
 
-const MEMORY_STORAGE_KEY = "herald-session-memory-v1";
+const MEMORY_STORAGE_KEY = "sifu-session-memory-v1";
 
 const riskStyles = {
   STOP: "border-[var(--danger)]/25 bg-[var(--danger)]/10 text-[var(--danger)]",
@@ -82,7 +82,7 @@ function normalizeSavedMemory(value: unknown): ChatTurn[] {
     .slice(-10)
     .map((turn) => {
       const item = turn as Record<string, unknown>;
-      const role = item.role === "herald" ? "herald" : item.role === "worker" ? "worker" : null;
+      const role = item.role === "sifu" ? "sifu" : item.role === "worker" ? "worker" : null;
       const content = typeof item.content === "string" ? item.content.trim() : "";
       const risk = ["STOP", "CHECK", "OK", "ASK"].includes(String(item.risk)) ? (String(item.risk) as AskResult["risk"]) : undefined;
       const time = typeof item.time === "string" ? item.time : new Date().toISOString();
@@ -192,7 +192,7 @@ export function LiveSafetyDemo() {
     };
   }, [photoPreview]);
 
-  async function askHerald(nextQuestion = question, nextLanguage = language) {
+  async function askSifu(nextQuestion = question, nextLanguage = language) {
     const trimmed = nextQuestion.trim();
     if (!trimmed && !photoDataUrl) return;
 
@@ -215,7 +215,7 @@ export function LiveSafetyDemo() {
         }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Herald could not answer.");
+      if (!response.ok) throw new Error(payload.error || "Sifu could not answer.");
       setResult(payload);
       const time = new Date().toISOString();
       setMemoryTurns((turns) =>
@@ -227,7 +227,7 @@ export function LiveSafetyDemo() {
             time,
           },
           {
-            role: "herald",
+            role: "sifu",
             content: payload.answer,
             risk: payload.risk,
             time,
@@ -237,7 +237,7 @@ export function LiveSafetyDemo() {
       setQuestion("");
       if (voiceReply) speak(payload.answer, payload.language === "yue" ? "yue" : nextLanguage);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Herald could not answer.");
+      setError(err instanceof Error ? err.message : "Sifu could not answer.");
     } finally {
       setLoading(false);
     }
@@ -282,7 +282,7 @@ export function LiveSafetyDemo() {
       const transcript = event.results?.[0]?.[0]?.transcript;
       if (transcript) {
         setQuestion(transcript);
-        void askHerald(transcript, language);
+        void askSifu(transcript, language);
       }
     };
     recognition.start();
@@ -347,7 +347,7 @@ export function LiveSafetyDemo() {
               <div className="eyebrow">Worker console</div>
               <h1 className="h-display mt-1 text-[30px] leading-none sm:text-4xl">Ask before acting.</h1>
               <p className="mt-2 text-[13.5px] leading-relaxed text-muted-foreground">
-                Speak or type in Cantonese or English. Herald asks for missing context before deciding.
+                Speak or type in Cantonese or English. Sifu asks for missing context before deciding.
               </p>
             </div>
             <button
@@ -447,7 +447,7 @@ export function LiveSafetyDemo() {
             </button>
             <button
               type="button"
-              onClick={() => askHerald()}
+              onClick={() => askSifu()}
               disabled={loading || photoProcessing || (!question.trim() && !photoDataUrl)}
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-4 text-[13px] font-medium text-[var(--primary-foreground)] transition disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -488,7 +488,7 @@ export function LiveSafetyDemo() {
           <div className="mt-3 rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Herald answer
+                Sifu answer
               </div>
               <button
                 type="button"
@@ -510,7 +510,7 @@ export function LiveSafetyDemo() {
               </div>
               <ol className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
                 {(result?.reasoning ?? [
-                  "Herald sends the worker question and photo to a hosted free LLM.",
+                  "Sifu sends the worker question and photo to a hosted free LLM.",
                   "The model reasons over the Votee safety source pack before deciding.",
                 ])
                   .slice(0, 3)
@@ -537,7 +537,7 @@ export function LiveSafetyDemo() {
                   memoryTurns.slice(-6).map((turn, index) => (
                     <div key={`${turn.time}-${index}`} className="grid gap-1 rounded-xl bg-[var(--muted)]/50 px-3 py-2">
                       <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                        <span>{turn.role === "worker" ? "Worker" : "Herald"}</span>
+                        <span>{turn.role === "worker" ? "Worker" : "Sifu"}</span>
                         {turn.risk && <span className="text-foreground">{turn.risk}</span>}
                       </div>
                       <p className="line-clamp-2 text-[12.5px] leading-relaxed text-foreground/80">{turn.content}</p>
@@ -580,7 +580,7 @@ export function LiveSafetyDemo() {
             <InfoCard icon={<ShieldCheck className="h-4 w-4 text-foreground/70" />} title="Decision rationale">
               <ol className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
                 {(result?.reasoning ?? [
-                  "Herald sends text plus any photo to a hosted free LLM.",
+                  "Sifu sends text plus any photo to a hosted free LLM.",
                   "The prompt includes the Votee source pack as cited safety memory.",
                   "The model returns STOP, CHECK, OK, or ASK with reasoning and citations.",
                 ]).map((step) => (
@@ -600,7 +600,7 @@ export function LiveSafetyDemo() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-[13px] text-muted-foreground">Citations appear after Herald answers.</p>
+                  <p className="text-[13px] text-muted-foreground">Citations appear after Sifu answers.</p>
                 )}
               </div>
             </InfoCard>

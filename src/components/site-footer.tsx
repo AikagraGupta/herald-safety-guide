@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { HeraldMark } from "./site-header";
+import { SifuMark } from "./site-header";
 
 const cols = [
   {
@@ -30,7 +30,7 @@ const cols = [
   {
     title: "Company",
     links: [
-      { to: "/about", label: "About Herald" },
+      { to: "/about", label: "About Sifu" },
       { to: "/about", label: "Regions" },
       { to: "/about", label: "Careers" },
       { to: "/about", label: "Contact" },
@@ -45,16 +45,16 @@ export function SiteFooter() {
         <div className="grid gap-12 lg:grid-cols-[1.4fr_2fr]">
           <div>
             <Link to="/" className="flex items-center gap-2.5">
-              <HeraldMark />
-              <span className="text-[15px] font-semibold tracking-tight">Herald</span>
+              <SifuMark />
+              <span className="text-[15px] font-semibold tracking-tight">Sifu</span>
             </Link>
             <p className="mt-4 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
               AI guidance for the workers making dangerous calls on site. Built on Votee AI and
               Beever Atlas memory. Hong Kong-first, built for construction and facilities.
             </p>
             <div className="mt-6 space-y-1.5 text-[13px] text-muted-foreground">
-              <div>Herald Ops Ltd. · Kwun Tong, Hong Kong</div>
-              <div>contact@herald.site</div>
+              <div>Sifu Ops Ltd. · Kwun Tong, Hong Kong</div>
+              <div>contact@sifu.site</div>
               <div>+852 5000 0000</div>
             </div>
           </div>
@@ -83,7 +83,7 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-16 flex flex-col items-start justify-between gap-4 border-t border-[var(--border)] pt-6 text-[12.5px] text-muted-foreground sm:flex-row sm:items-center">
-          <div>© {new Date().getFullYear()} Herald. Operating safety, not office chat.</div>
+          <div>© {new Date().getFullYear()} Sifu. Operating safety, not office chat.</div>
           <div className="flex gap-6">
             <a href="#" className="hover:text-foreground">Privacy</a>
             <a href="#" className="hover:text-foreground">Security</a>

@@ -51,7 +51,7 @@ export function CTAStrip() {
               Give every worker an expert in their ear.
             </h2>
             <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-[color-mix(in_oklab,var(--primary-foreground)_75%,transparent)]">
-              Run the fire-alarm scenario live. Herald blocks the action, cites the Votee source pack,
+              Run the fire-alarm scenario live. Sifu blocks the action, cites the Votee source pack,
               notifies the supervisor, and writes the compliance log.
             </p>
           </div>

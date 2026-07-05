@@ -288,7 +288,7 @@ function buildLocalAnswer(question, language = "auto") {
 
   return {
     mode: "votee-source-pack",
-    brand: "Herald",
+    brand: "Sifu",
     tagline: "AI for Physical Workers",
     question,
     risk: rule.risk,
@@ -302,7 +302,7 @@ function buildLocalAnswer(question, language = "auto") {
           status: "notified",
           name: "Site Supervisor",
           channel: "SMS / WhatsApp demo",
-          message: `Worker asked: "${question}". Herald marked ${rule.risk}.`
+          message: `Worker asked: "${question}". Sifu marked ${rule.risk}.`
         }
       : {
           status: "ready",
@@ -468,7 +468,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Herald prototype running at http://localhost:${PORT}`);
+  console.log(`Sifu prototype running at http://localhost:${PORT}`);
   if (process.env.ATLAS_URL) {
     console.log(`Atlas proxy enabled: ${process.env.ATLAS_URL}`);
   }

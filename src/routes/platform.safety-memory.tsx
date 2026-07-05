@@ -5,13 +5,13 @@ import { SafetyMemoryMock, SourceChip } from "@/components/product-mocks";
 export const Route = createFileRoute("/platform/safety-memory")({
   head: () => ({
     meta: [
-      { title: "Safety Memory — Herald" },
+      { title: "Safety Memory — Sifu" },
       {
         name: "description",
         content:
           "Site SOPs, regulator codes, permits, and worker Q&A as a cited retrieval layer — built on Votee AI and Beever Atlas.",
       },
-      { property: "og:title", content: "Safety Memory — Herald" },
+      { property: "og:title", content: "Safety Memory — Sifu" },
       {
         property: "og:description",
         content: "Cited safety memory built on Votee AI and Beever Atlas.",
@@ -26,8 +26,8 @@ function SafetyMemory() {
     <PageShell>
       <PageHeader
         eyebrow="Safety Memory · Votee AI · Beever Atlas"
-        title="The source of truth Herald cites, every time."
-        lead="Site SOPs, method statements, regulator codes, permit templates and captured floor Q&A become one revision-aware memory. Every Herald answer cites the pack, the clause, and the version."
+        title="The source of truth Sifu cites, every time."
+        lead="Site SOPs, method statements, regulator codes, permit templates and captured floor Q&A become one revision-aware memory. Every Sifu answer cites the pack, the clause, and the version."
       />
       <section className="mx-auto max-w-7xl px-6 pb-16">
         <SafetyMemoryMock />
@@ -37,7 +37,7 @@ function SafetyMemory() {
           {[
             {
               t: "Ingest what your site already runs on",
-              d: "SOPs, method statements, permits, drawings, safety bulletins. Herald parses them into structured, versioned source packs.",
+              d: "SOPs, method statements, permits, drawings, safety bulletins. Sifu parses them into structured, versioned source packs.",
             },
             {
               t: "Capture worker knowledge as memory",
@@ -49,7 +49,7 @@ function SafetyMemory() {
             },
             {
               t: "Cited, never black-box",
-              d: "Herald cannot answer without a source. If no source pack supports the question, the worker sees CHECK and a supervisor is paged.",
+              d: "Sifu cannot answer without a source. If no source pack supports the question, the worker sees CHECK and a supervisor is paged.",
             },
           ].map((c) => (
             <div key={c.t} className="panel rounded-2xl p-6">

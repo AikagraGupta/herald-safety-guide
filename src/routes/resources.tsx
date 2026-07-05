@@ -4,13 +4,13 @@ import { PageShell, PageHeader, CTAStrip, Arrow } from "@/components/page-shell"
 export const Route = createFileRoute("/resources")({
   head: () => ({
     meta: [
-      { title: "Resources — Herald" },
+      { title: "Resources — Sifu" },
       {
         name: "description",
         content:
           "Briefs and notes on site safety AI, Votee AI + Beever Atlas memory architecture, and frontline worker knowledge capture.",
       },
-      { property: "og:title", content: "Resources — Herald" },
+      { property: "og:title", content: "Resources — Sifu" },
       {
         property: "og:description",
         content: "Site safety AI, Votee memory architecture, and frontline knowledge capture.",
@@ -24,13 +24,13 @@ const items = [
   {
     tag: "Brief",
     t: "Site safety AI, without the hallucinations",
-    d: "How Herald routes STOP, CHECK, and OK decisions — and why the AI is deliberately conservative on high-risk actions.",
+    d: "How Sifu routes STOP, CHECK, and OK decisions — and why the AI is deliberately conservative on high-risk actions.",
     time: "8 min read",
   },
   {
     tag: "Architecture",
     t: "Votee AI + Beever Atlas as safety memory",
-    d: "The retrieval layer under every cited Herald answer. Source packs, revisions, and how citation is enforced.",
+    d: "The retrieval layer under every cited Sifu answer. Source packs, revisions, and how citation is enforced.",
     time: "12 min read",
   },
   {
@@ -47,7 +47,7 @@ const items = [
   },
   {
     tag: "Field report",
-    t: "48 hours on B7 Tower with Herald",
+    t: "48 hours on B7 Tower with Sifu",
     d: "STOP calls, permit issuance, and how supervisors used the escalation queue during a live site rollout.",
     time: "9 min read",
   },
@@ -65,7 +65,7 @@ function Resources() {
       <PageHeader
         eyebrow="Resources"
         title="Notes from the site floor and the safety memory."
-        lead="Briefs, architecture notes, and field reports from Herald deployments. Written for safety officers, operations leads, and enterprise buyers evaluating AI on the frontline."
+        lead="Briefs, architecture notes, and field reports from Sifu deployments. Written for safety officers, operations leads, and enterprise buyers evaluating AI on the frontline."
       />
       <section className="mx-auto max-w-7xl px-6 pb-24">
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">

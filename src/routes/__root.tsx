@@ -77,14 +77,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Herald — AI for Physical Workers" },
+      { title: "Sifu — AI for Physical Workers" },
       {
         name: "description",
         content:
-          "Herald gives frontline workers fast, cited answers before risky actions — with STOP/CHECK safety routing, supervisor escalation, and audit-ready compliance logs.",
+          "Sifu gives frontline workers fast, cited answers before risky actions — with STOP/CHECK safety routing, supervisor escalation, and audit-ready compliance logs.",
       },
-      { name: "author", content: "Herald" },
-      { property: "og:title", content: "Herald — AI for Physical Workers" },
+      { name: "author", content: "Sifu" },
+      { property: "og:title", content: "Sifu — AI for Physical Workers" },
       {
         property: "og:description",
         content:

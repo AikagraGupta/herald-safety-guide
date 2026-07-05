@@ -30,7 +30,7 @@ const navGroups = [
   {
     label: "Company",
     items: [
-      { to: "/about", label: "About Herald" },
+      { to: "/about", label: "About Sifu" },
       { to: "/about", label: "Regions" },
       { to: "/about", label: "Contact" },
     ],
@@ -47,8 +47,8 @@ export function SiteHeader() {
         style={{ boxShadow: "0 1px 2px rgba(20,39,68,0.04), 0 12px 32px -20px rgba(20,39,68,0.18)" }}
       >
         <Link to="/" className="flex min-h-10 items-center gap-2.5">
-          <HeraldMark />
-          <span className="text-[15px] font-semibold tracking-tight text-foreground">Herald</span>
+          <SifuMark />
+          <span className="text-[15px] font-semibold tracking-tight text-foreground">Sifu</span>
           <span className="hidden text-[11px] font-medium tracking-wider text-muted-foreground sm:inline">
             AI FOR PHYSICAL WORKERS
           </span>
@@ -109,7 +109,7 @@ export function SiteHeader() {
   );
 }
 
-export function HeraldMark({ className = "" }: { className?: string }) {
+export function SifuMark({ className = "" }: { className?: string }) {
   return (
     <span
       className={`inline-flex h-7 w-7 items-center justify-center rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] ${className}`}

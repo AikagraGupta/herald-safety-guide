@@ -1,5 +1,5 @@
 // Product UI mockup fragments used across the site.
-// These are visual representations of Herald's operating surfaces, not wired-up components.
+// These are visual representations of Sifu's operating surfaces, not wired-up components.
 
 export function WorkerGuidanceMock() {
   return (
@@ -10,7 +10,7 @@ export function WorkerGuidanceMock() {
           <span className="h-2 w-2 rounded-full bg-[var(--gold)]/60" />
           <span className="h-2 w-2 rounded-full bg-foreground/20" />
           <span className="ml-3 text-[11px] font-medium tracking-wider text-muted-foreground">
-            HERALD · WORKER VIEW · SITE B7-03
+            SIFU · WORKER VIEW · SITE B7-03
           </span>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -97,7 +97,7 @@ export function WorkerGuidanceMock() {
               <span className="text-muted-foreground">14:22:01</span> worker.query slip_trip.access
             </div>
             <div>
-              <span className="text-muted-foreground">14:22:02</span> herald.decision{" "}
+              <span className="text-muted-foreground">14:22:02</span> sifu.decision{" "}
               <span className="text-[var(--gold)]">CHECK</span>
             </div>
             <div>
@@ -166,7 +166,7 @@ export function SafetyMemoryMock() {
         ))}
       </div>
       <div className="border-t border-[var(--border)] bg-[var(--muted)]/40 px-4 py-2.5 text-[11.5px] text-muted-foreground">
-        Every Herald answer cites the exact source pack, clause, and revision.
+        Every Sifu answer cites the exact source pack, clause, and revision.
       </div>
     </div>
   );

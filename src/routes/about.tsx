@@ -4,13 +4,13 @@ import { PageShell, PageHeader, CTAStrip } from "@/components/page-shell";
 export const Route = createFileRoute("/about")({
   head: () => ({
     meta: [
-      { title: "About — Herald" },
+      { title: "About — Sifu" },
       {
         name: "description",
         content:
-          "Herald is an AI safety and guidance platform for physical workers, based in Hong Kong and built on Votee AI and Beever Atlas.",
+          "Sifu is an AI safety and guidance platform for physical workers, based in Hong Kong and built on Votee AI and Beever Atlas.",
       },
-      { property: "og:title", content: "About — Herald" },
+      { property: "og:title", content: "About — Sifu" },
       {
         property: "og:description",
         content: "Built for physical workers. Hong Kong-first. Powered by Votee AI and Beever Atlas.",
@@ -26,7 +26,7 @@ function About() {
       <PageHeader
         eyebrow="Company"
         title="We build for the workers, not the office."
-        lead="Herald was started to close a specific gap: the frontline worker who needs to make a safety-critical call — right now — with the right information. We are Hong Kong-first, built on Votee AI and Beever Atlas, and focused on physical-worker environments."
+        lead="Sifu was started to close a specific gap: the frontline worker who needs to make a safety-critical call — right now — with the right information. We are Hong Kong-first, built on Votee AI and Beever Atlas, and focused on physical-worker environments."
       />
       <section className="mx-auto max-w-7xl px-6 pb-24">
         <div className="grid gap-6 md:grid-cols-2">
@@ -37,7 +37,7 @@ function About() {
             },
             {
               t: "Cantonese-first language",
-              d: "Frontline workers in Hong Kong speak Cantonese. Herald was built for how they actually ask questions on the floor.",
+              d: "Frontline workers in Hong Kong speak Cantonese. Sifu was built for how they actually ask questions on the floor.",
             },
             {
               t: "Cited, conservative AI",

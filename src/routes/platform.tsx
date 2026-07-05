@@ -4,13 +4,13 @@ import { PageShell, PageHeader, CTAStrip, Arrow } from "@/components/page-shell"
 export const Route = createFileRoute("/platform")({
   head: () => ({
     meta: [
-      { title: "Platform — Herald" },
+      { title: "Platform — Sifu" },
       {
         name: "description",
         content:
-          "The Herald platform: worker guidance, safety memory built on Votee AI and Beever Atlas, and audit-ready compliance logging.",
+          "The Sifu platform: worker guidance, safety memory built on Votee AI and Beever Atlas, and audit-ready compliance logging.",
       },
-      { property: "og:title", content: "Platform — Herald" },
+      { property: "og:title", content: "Platform — Sifu" },
       {
         property: "og:description",
         content: "Worker guidance, safety memory, and compliance logging for physical worker teams.",
@@ -47,7 +47,7 @@ function Platform() {
       <PageHeader
         eyebrow="Platform"
         title="Three surfaces. One safety operating layer."
-        lead="Herald is deployed as a coordinated system across the site: what the worker sees, what the memory retrieves, and what the compliance layer records."
+        lead="Sifu is deployed as a coordinated system across the site: what the worker sees, what the memory retrieves, and what the compliance layer records."
       />
       <section className="mx-auto max-w-7xl px-6 pb-16">
         <div className="grid gap-5 md:grid-cols-3">

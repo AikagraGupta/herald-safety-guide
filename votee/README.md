@@ -1,6 +1,6 @@
-# Herald x Votee Build Notes
+# Sifu x Votee Build Notes
 
-Herald uses Votee's Beever Atlas pattern as the memory layer for physical-worker safety
+Sifu uses Votee's Beever Atlas pattern as the memory layer for physical-worker safety
 guidance.
 
 For the hackathon prototype, the app uses this Atlas-ready source pack as the Votee
@@ -19,5 +19,5 @@ npm run dev
 4. The model returns `ASK`, `STOP`, `CHECK`, or `OK` plus citations and rationale.
 5. STOP/CHECK decisions notify a supervisor and create an audit log.
 
-This keeps the original Herald idea intact: AI for physical workers, Cantonese-first,
+This keeps the original Sifu idea intact: AI for physical workers, Cantonese-first,
 cited, auditable, and never leaving workers without a human path.

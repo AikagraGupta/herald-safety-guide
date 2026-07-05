@@ -186,7 +186,8 @@ export function LiveSafetyDemo() {
 
   const risk = result?.risk;
   const RiskIcon = risk ? riskIcon[risk] : ShieldCheck;
-  const sourceMode = result?.mode === "beever-atlas" ? "Live Beever Atlas" : "Votee Atlas source pack";
+  const sourceMode =
+    result?.mode === "beever-atlas" ? "Beever Atlas deep reasoning" : "Local safety reasoning";
 
   return (
     <section id="live-demo" className="flex flex-1 flex-col gap-3 pb-4">
@@ -352,6 +353,22 @@ export function LiveSafetyDemo() {
             <p className="mt-3 text-[17px] font-medium leading-relaxed text-foreground">
               {result?.answer ?? "Ask a question to get a STOP, CHECK, OK, or context request with cited sources."}
             </p>
+            <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/50 p-3">
+              <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Why this decision
+              </div>
+              <ol className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
+                {(result?.reasoning ?? [
+                  "Herald checks role, task, hazard signals, and missing context before answering.",
+                  "Beever Atlas deep reasoning is used when MCP credentials are configured.",
+                ])
+                  .slice(0, 3)
+                  .map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+              </ol>
+            </div>
           </div>
 
           <div className="mt-3 grid gap-3">

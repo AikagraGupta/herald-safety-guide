@@ -7,6 +7,7 @@ type Rule = {
   id: string;
   risk: Exclude<Risk, "ASK">;
   keywords: string[];
+  requires?: string[][];
   en: { answer: string; steps: string[] };
   yue: { answer: string; steps: string[] };
   citations: Array<{ title: string; source: string; excerpt: string }>;
@@ -43,6 +44,40 @@ const rules: Rule[] = [
         title: "Votee Safety Atlas",
         source: "Firefighter respiratory protection",
         excerpt: "Low-air and SCBA warnings require immediate crew communication, withdrawal, and emergency escalation if exit is compromised.",
+      },
+    ],
+  },
+  {
+    id: "wet-electrical-panel",
+    risk: "STOP",
+    keywords: ["water", "wet floor", "spill", "electrical panel", "electric panel", "panel", "breaker", "水", "水漬", "濕", "電箱", "電掣"],
+    requires: [
+      ["water", "wet floor", "spill", "水", "水漬", "濕"],
+      ["electrical panel", "electric panel", "panel", "breaker", "電箱", "電掣"],
+    ],
+    en: {
+      answer:
+        "Stop. Water near an electrical panel is a combined slip and electrocution hazard. Do not open the panel until the area is isolated, dried, and the electrical source is made safe by an authorized person.",
+      steps: [
+        "Keep people away from the wet area and the panel.",
+        "Do not touch or open the panel while standing near water.",
+        "Call an authorized electrical/safety lead to isolate power, dry the area, and verify it is safe.",
+      ],
+    },
+    yue: {
+      answer: "停低。電箱附近有水係跣倒同觸電嘅複合風險。未隔離、抹乾同由合資格人員確認安全之前，唔好開電箱。",
+      steps: ["先阻止其他人接近水漬同電箱。", "企喺水附近時唔好掂或打開電箱。", "搵合資格電工／安全負責人隔離電源、抹乾範圍並確認安全。"],
+    },
+    citations: [
+      {
+        title: "Votee Safety Atlas",
+        source: "Wet electrical hazard",
+        excerpt: "Water and electrical equipment require isolation, area control, and authorized verification before work continues.",
+      },
+      {
+        title: "Votee Safety Atlas",
+        source: "Housekeeping and access",
+        excerpt: "Wet access routes must be marked or isolated before workers continue through the area.",
       },
     ],
   },
@@ -175,7 +210,7 @@ const rules: Rule[] = [
   {
     id: "slip-trip-condition",
     risk: "CHECK",
-    keywords: ["slip", "trip", "wet floor", "spill", "blocked", "obstruction", "leak", "滑", "跣", "水漬", "漏水", "阻住", "絆倒"],
+    keywords: ["slip", "trip", "wet floor", "water", "wet", "puddle", "spill", "blocked", "obstruction", "leak", "滑", "跣", "水", "水漬", "濕", "漏水", "阻住", "絆倒"],
     en: {
       answer: "Check and control the area first. Do not just walk through a slip, trip, or blocked-access hazard.",
       steps: [
@@ -249,7 +284,15 @@ function hasCjk(text: string) {
 
 function chooseRule(question: string) {
   const normalized = question.toLowerCase();
-  return rules.find((rule) => rule.keywords.some((keyword) => normalized.includes(keyword.toLowerCase()))) ?? null;
+  return (
+    rules.find((rule) => {
+      if (rule.requires) {
+        return rule.requires.every((group) => group.some((keyword) => normalized.includes(keyword.toLowerCase())));
+      }
+
+      return rule.keywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
+    }) ?? null
+  );
 }
 
 function matchingSignals(question: string, rule: Rule | null) {

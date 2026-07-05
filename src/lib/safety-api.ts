@@ -19,6 +19,7 @@ type LlmSafetyDecision = {
   citations: Citation[];
   observedText?: string;
   fallback?: boolean;
+  provider?: "aicoo" | "pollinations";
 };
 
 type LooseDecision = Partial<LlmSafetyDecision> & {
@@ -91,6 +92,17 @@ function getPollinationsConfig() {
     apiKey: process.env.POLLINATIONS_API_KEY,
     model: process.env.POLLINATIONS_MODEL ?? "openai",
     visionModel: process.env.POLLINATIONS_VISION_MODEL ?? "openai",
+  };
+}
+
+function getAicooConfig() {
+  const apiKey = process.env.AICOO_API_KEY ?? process.env.PULSE_API_KEY;
+  if (!apiKey) return null;
+
+  return {
+    apiKey,
+    baseUrl: (process.env.AICOO_API_URL ?? "https://www.aicoo.io/api/v1").replace(/\/$/, ""),
+    model: process.env.AICOO_MODEL,
   };
 }
 
@@ -360,6 +372,52 @@ function parseOutputText(payload: Record<string, unknown>) {
   return "";
 }
 
+function parseAicooOutputText(raw: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+
+  try {
+    const payload = JSON.parse(trimmed) as Record<string, unknown>;
+    const direct = parseOutputText(payload);
+    if (direct) return direct;
+
+    for (const field of ["text", "answer", "response", "content"]) {
+      const value = payload[field];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+
+    const message = payload.message as Record<string, unknown> | string | undefined;
+    if (typeof message === "string") return message.trim();
+    if (typeof message?.content === "string") return message.content.trim();
+  } catch {
+    // Aicoo can stream newline-delimited events. Parse those below.
+  }
+
+  const chunks: string[] = [];
+  for (const line of trimmed.split(/\r?\n/)) {
+    let item = line.trim();
+    if (!item) continue;
+    if (item.startsWith("data:")) item = item.slice(5).trim();
+    if (item === "[DONE]") continue;
+
+    try {
+      const event = JSON.parse(item) as Record<string, unknown>;
+      for (const field of ["textDelta", "delta", "text", "content", "answer", "response"]) {
+        const value = event[field];
+        if (typeof value === "string") chunks.push(value);
+      }
+
+      const message = event.message as Record<string, unknown> | string | undefined;
+      if (typeof message === "string") chunks.push(message);
+      if (typeof message?.content === "string") chunks.push(message.content);
+    } catch {
+      // Ignore non-JSON lines such as SSE event labels.
+    }
+  }
+
+  return chunks.join("").trim();
+}
+
 function parseImageDataUrl(imageDataUrl: string) {
   const match = imageDataUrl.match(/^data:([^;,]+);base64,(.+)$/);
   if (!match) throw new Error("Attached photo format was not readable. Try attaching a JPEG, PNG, or WEBP image.");
@@ -414,10 +472,53 @@ async function extractPhotoText(imageDataUrl: string, language: LanguageMode) {
   }
 }
 
+async function askAicooReasoningModel(question: string, language: LanguageMode, hasImage: boolean, imageOcrText: string) {
+  const config = getAicooConfig();
+  if (!config) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.AICOO_TIMEOUT_MS ?? 22000));
+
+  try {
+    const response = await fetch(`${config.baseUrl}/chat`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: buildPrompt(question, language, hasImage, imageOcrText),
+        stream: false,
+        temperature: 0.2,
+        ...(config.model ? { model: config.model } : {}),
+      }),
+      signal: controller.signal,
+    });
+
+    const raw = await response.text();
+    if (!response.ok) throw new Error(`Aicoo returned HTTP ${response.status}`);
+
+    const outputText = parseAicooOutputText(raw);
+    const decision = outputText ? parseLooseDecision(outputText) : null;
+    if (!decision) throw new Error("Aicoo response was not a structured safety decision.");
+
+    decision.provider = "aicoo";
+    if (!decision.observedText && imageOcrText) decision.observedText = imageOcrText;
+    return decision;
+  } catch (error) {
+    console.error("Aicoo reasoning failed; falling back to Pollinations.", error);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function askReasoningModel(question: string, language: LanguageMode, imageDataUrl?: string) {
   const config = getPollinationsConfig();
   const model = imageDataUrl ? config.visionModel : config.model;
   const imageOcrText = imageDataUrl ? await extractPhotoText(imageDataUrl, language) : "";
+  const aicooDecision = await askAicooReasoningModel(question, language, Boolean(imageDataUrl), imageOcrText);
+  if (aicooDecision) return aicooDecision;
 
   const content: Array<Record<string, unknown>> = [
     {
@@ -481,6 +582,8 @@ async function askReasoningModel(question: string, language: LanguageMode, image
     parseLooseDecision(outputText) ??
     safeFallbackWithOcr(question, language, "The hosted model returned malformed JSON, so Herald did not expose the parsing error.", imageOcrText);
 
+  decision.provider = "pollinations";
+
   if (!decision.steps.length) {
     decision.steps = ["Pause and confirm the site condition.", "Escalate to a competent supervisor if risk is unclear."];
   }
@@ -529,10 +632,15 @@ export async function handleSafetyAsk(request: Request) {
 
   try {
     const decision = await askReasoningModel(question || "Please inspect this site photo and advise what the worker should do.", language, body.imageDataUrl);
+    const mode = decision.fallback
+      ? "safety-fallback-votee-source-pack"
+      : decision.provider === "aicoo"
+        ? "aicoo-votee-source-pack"
+        : "pollinations-votee-source-pack";
 
     return Response.json(
       {
-        mode: decision.fallback ? "safety-fallback-votee-source-pack" : "pollinations-votee-source-pack",
+        mode,
         risk: decision.risk,
         answer: decision.answer,
         language,

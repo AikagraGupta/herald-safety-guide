@@ -20,6 +20,22 @@ type LlmSafetyDecision = {
   observedText?: string;
 };
 
+type LooseDecision = Partial<LlmSafetyDecision> & {
+  step1?: string;
+  step2?: string;
+  step3?: string;
+  step4?: string;
+  reason1?: string;
+  reason2?: string;
+  reason3?: string;
+  reason4?: string;
+  supervisorStatus?: string;
+  supervisorMessage?: string;
+  citationTitle?: string;
+  citationSource?: string;
+  citationExcerpt?: string;
+};
+
 const sourcePack = [
   {
     id: "fire-protection-controls",
@@ -91,28 +107,22 @@ function buildPrompt(question: string, language: LanguageMode, hasImage: boolean
     "- OK: ordinary low-risk task where normal controls clearly match the site.",
     "- ASK: insufficient location/task/hazard detail.",
     `Return worker-facing content in ${outputLanguage}. Keep it short enough for a phone screen.`,
-    "Return ONLY raw JSON, no markdown, with this exact shape:",
+    "Return ONLY raw JSON, no markdown. Use plain strings only, no arrays. Use this exact shape:",
     JSON.stringify(
       {
         risk: "STOP | CHECK | OK | ASK",
         answer: "one direct worker-facing answer",
-        steps: ["concrete next action 1", "concrete next action 2", "concrete next action 3"],
-        reasoning: [
-          "short rationale item about what was understood",
-          "short rationale item about missing/sufficient context",
-          "short rationale item about why the risk classification was chosen",
-        ],
-        supervisor: {
-          status: "Required | Recommended | Optional | Not sent",
-          message: "short supervisor/escalation message",
-        },
-        citations: [
-          {
-            title: "Votee source title",
-            source: "Votee source id",
-            excerpt: "short supporting excerpt from the Votee source pack",
-          },
-        ],
+        step1: "concrete next action 1",
+        step2: "concrete next action 2",
+        step3: "concrete next action 3",
+        reason1: "short rationale item about what was understood",
+        reason2: "short rationale item about missing/sufficient context",
+        reason3: "short rationale item about why the risk classification was chosen",
+        supervisorStatus: "Required | Recommended | Optional | Not sent",
+        supervisorMessage: "short supervisor/escalation message",
+        citationTitle: "Votee source title",
+        citationSource: "Votee source id",
+        citationExcerpt: "short supporting excerpt from the Votee source pack",
         observedText: "relevant OCR or visual observations from the image, or empty string",
       },
       null,
@@ -125,32 +135,171 @@ function buildPrompt(question: string, language: LanguageMode, hasImage: boolean
   ].join("\n\n");
 }
 
+function toStringList(...values: unknown[]) {
+  return values.flatMap((value) => {
+    if (Array.isArray(value)) return value.map(String);
+    if (typeof value === "string") return value.split(/\n+|(?:^|\s)\d+\.\s+/);
+    return [];
+  }).map((item) => item.trim()).filter(Boolean).slice(0, 5);
+}
+
 function normalizeDecision(value: unknown): LlmSafetyDecision | null {
-  const parsed = value as Partial<LlmSafetyDecision> | null;
+  const parsed = value as LooseDecision | null;
   if (!parsed || typeof parsed !== "object") return null;
   if (!["STOP", "CHECK", "OK", "ASK"].includes(String(parsed.risk))) return null;
   if (!parsed.answer?.trim()) return null;
 
+  const supervisor = parsed.supervisor ?? {
+    status: parsed.supervisorStatus,
+    message: parsed.supervisorMessage,
+  };
+  const citation =
+    parsed.citationTitle || parsed.citationExcerpt
+      ? [
+          {
+            title: String(parsed.citationTitle ?? "Votee safety source pack"),
+            source: String(parsed.citationSource ?? "Votee"),
+            excerpt: String(parsed.citationExcerpt ?? ""),
+          },
+        ]
+      : [];
+
   return {
     risk: parsed.risk as Risk,
     answer: String(parsed.answer).trim(),
-    steps: Array.isArray(parsed.steps) ? parsed.steps.map(String).filter(Boolean).slice(0, 5) : [],
-    reasoning: Array.isArray(parsed.reasoning) ? parsed.reasoning.map(String).filter(Boolean).slice(0, 4) : [],
+    steps: toStringList(parsed.steps, parsed.step1, parsed.step2, parsed.step3, parsed.step4),
+    reasoning: toStringList(parsed.reasoning, parsed.reason1, parsed.reason2, parsed.reason3, parsed.reason4).slice(0, 4),
     supervisor: {
-      status: parsed.supervisor?.status ?? (parsed.risk === "STOP" ? "Required" : parsed.risk === "CHECK" ? "Recommended" : "Optional"),
-      message: parsed.supervisor?.message ?? "Supervisor review depends on the model decision.",
+      status: supervisor?.status ?? (parsed.risk === "STOP" ? "Required" : parsed.risk === "CHECK" ? "Recommended" : "Optional"),
+      message: supervisor?.message ?? "Supervisor review depends on the model decision.",
     },
-    citations: Array.isArray(parsed.citations)
-      ? parsed.citations
+    citations: [
+      ...citation,
+      ...(Array.isArray(parsed.citations)
+        ? parsed.citations
           .map((citation) => ({
             title: String(citation.title ?? "Votee safety source pack"),
             source: String(citation.source ?? "Votee"),
             excerpt: String(citation.excerpt ?? ""),
           }))
           .filter((citation) => citation.title && citation.excerpt)
-          .slice(0, 4)
-      : [],
+        : []),
+    ].slice(0, 4),
     observedText: String(parsed.observedText ?? ""),
+  };
+}
+
+function extractJsonObject(text: string) {
+  const clean = text
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .trim();
+  const start = clean.indexOf("{");
+  const end = clean.lastIndexOf("}");
+  if (start === -1 || end <= start) return clean;
+  return clean.slice(start, end + 1);
+}
+
+function tryParseJson(text: string) {
+  const candidates = [
+    extractJsonObject(text),
+    extractJsonObject(text).replace(/,\s*([}\]])/g, "$1"),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as unknown;
+    } catch {
+      // Try the next increasingly tolerant candidate.
+    }
+  }
+
+  return null;
+}
+
+function readStringField(text: string, field: string) {
+  const pattern = new RegExp(`["']?${field}["']?\\s*:\\s*(["'])([\\s\\S]*?)\\1(?=\\s*[,}\\n])`, "i");
+  const match = text.match(pattern);
+  return match?.[2]?.replace(/\\"/g, '"').trim();
+}
+
+function readRisk(text: string): Risk | null {
+  const field = readStringField(text, "risk")?.toUpperCase();
+  if (field === "STOP" || field === "CHECK" || field === "OK" || field === "ASK") return field;
+  const match = text.match(/\b(STOP|CHECK|OK|ASK)\b/i)?.[1]?.toUpperCase();
+  if (match === "STOP" || match === "CHECK" || match === "OK" || match === "ASK") return match;
+  return null;
+}
+
+function parseLooseDecision(text: string) {
+  const parsed = tryParseJson(text);
+  const normalized = normalizeDecision(parsed);
+  if (normalized) return normalized;
+
+  const loose: LooseDecision = {
+    risk: readRisk(text) ?? undefined,
+    answer: readStringField(text, "answer"),
+    step1: readStringField(text, "step1"),
+    step2: readStringField(text, "step2"),
+    step3: readStringField(text, "step3"),
+    reason1: readStringField(text, "reason1"),
+    reason2: readStringField(text, "reason2"),
+    reason3: readStringField(text, "reason3"),
+    supervisorStatus: readStringField(text, "supervisorStatus"),
+    supervisorMessage: readStringField(text, "supervisorMessage"),
+    citationTitle: readStringField(text, "citationTitle"),
+    citationSource: readStringField(text, "citationSource"),
+    citationExcerpt: readStringField(text, "citationExcerpt"),
+    observedText: readStringField(text, "observedText"),
+  };
+
+  return normalizeDecision(loose);
+}
+
+function hasHighRiskSignal(text: string) {
+  return /\b(live|electric|electrical|panel|breaker|wire|water|wet|fire|smoke|gas|confined|height|roof|scaffold|ladder|weld|chemical|alarm|spill)\b/i.test(
+    text,
+  );
+}
+
+function safeFallbackDecision(question: string, language: LanguageMode, reason: string): LlmSafetyDecision {
+  const highRisk = hasHighRiskSignal(question);
+  const isYue = language === "yue";
+
+  return {
+    risk: highRisk ? "STOP" : "ASK",
+    answer: isYue
+      ? highRisk
+        ? "先停低，唔好繼續做。現場可能有高風險情況，等主管或合資格人員確認之後先再開工。"
+        : "我需要多少少現場資料先可以安全判斷。講清楚位置、你準備做咩、同見到咩危險。"
+      : highRisk
+        ? "Stop for now. Do not continue until a supervisor or competent person confirms the condition is safe."
+        : "I need a little more site context before making a safety call. Tell me the location, task, and visible hazard.",
+    steps: isYue
+      ? ["停低並保持安全距離。", "補充位置、工作動作、可見危險或加相片。", "如涉及電、火、煙、氣體、高空或密閉空間，立即通知主管。"]
+      : ["Pause and keep a safe distance.", "Add the location, intended action, visible hazard, or a photo.", "If electricity, fire, smoke, gas, height, or confined space is involved, notify a supervisor."],
+    reasoning: [
+      "The hosted model response could not be safely structured, so Herald used a conservative safety fallback.",
+      highRisk ? "High-risk words were present in the worker question." : "The worker question needs more site detail before a safe decision.",
+      reason,
+    ],
+    supervisor: {
+      status: highRisk ? "Required" : "Not sent",
+      message: highRisk
+        ? "Supervisor review is required because the live response was not reliable enough and high-risk conditions may be present."
+        : "No supervisor alert sent yet; add more context first.",
+    },
+    citations: [
+      {
+        title: "Votee Frontline Uncertainty Rule",
+        source: "frontline-uncertainty",
+        excerpt: "If context is missing, ask for more details instead of inventing a safety answer.",
+      },
+    ],
+    observedText: "",
   };
 }
 
@@ -229,7 +378,7 @@ async function askReasoningModel(question: string, language: LanguageMode, image
         {
           role: "system",
           content:
-            "You are Herald. Return only valid JSON for a physical-worker safety decision. Never include markdown fences.",
+            "You are Herald. Return one valid JSON object only. Do not use arrays, markdown, comments, or trailing commas.",
         },
         {
           role: "user",
@@ -239,6 +388,7 @@ async function askReasoningModel(question: string, language: LanguageMode, image
       temperature: 0.2,
       max_tokens: 900,
       stream: false,
+      response_format: { type: "json_object" },
     }),
   });
 
@@ -250,10 +400,11 @@ async function askReasoningModel(question: string, language: LanguageMode, image
   }
 
   const outputText = parseOutputText(payload);
-  if (!outputText) throw new Error("The reasoning model returned no structured text.");
+  if (!outputText) return safeFallbackDecision(question, language, "The hosted model returned an empty response.");
 
-  const decision = normalizeDecision(JSON.parse(outputText));
-  if (!decision) throw new Error("The reasoning model returned an invalid safety decision.");
+  const decision =
+    parseLooseDecision(outputText) ??
+    safeFallbackDecision(question, language, "The hosted model returned malformed JSON, so Herald did not expose the parsing error.");
 
   if (!decision.steps.length) {
     decision.steps = ["Pause and confirm the site condition.", "Escalate to a competent supervisor if risk is unclear."];
@@ -330,11 +481,35 @@ export async function handleSafetyAsk(request: Request) {
     );
   } catch (error) {
     console.error("LLM reasoning failed.", error);
+    const decision = safeFallbackDecision(
+      question || "site photo",
+      language,
+      error instanceof Error ? "The hosted model was temporarily unavailable." : "The hosted model failed unexpectedly.",
+    );
+
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "Free LLM reasoning failed. Try again in a few seconds.",
+        mode: "safety-fallback-votee-source-pack",
+        risk: decision.risk,
+        answer: decision.answer,
+        language,
+        steps: decision.steps,
+        citations: decision.citations,
+        reasoning: decision.reasoning,
+        observedText: decision.observedText,
+        supervisor: decision.supervisor,
+        logs: [
+          {
+            id: `LOG-${startedAt}`,
+            time: new Date(startedAt).toISOString(),
+            question: question || "[site photo only]",
+            risk: decision.risk,
+            ruleId: "safe-response-fallback",
+          },
+        ],
+        latencyMs: Math.max(45, Date.now() - startedAt),
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      { headers: { "Cache-Control": "no-store" } },
     );
   }
 }

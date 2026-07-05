@@ -199,8 +199,11 @@ export function LiveSafetyDemo() {
 
   const risk = result?.risk;
   const RiskIcon = risk ? riskIcon[risk] : ShieldCheck;
-  const sourceMode =
-    result?.mode === "pollinations-votee-source-pack" ? "Free LLM + Votee source pack" : "Free LLM reasoning";
+  const sourceMode = result?.mode === "pollinations-votee-source-pack"
+    ? "Free LLM + Votee source pack"
+    : result?.mode === "safety-fallback-votee-source-pack"
+      ? "Safety fallback + Votee source pack"
+      : "Free LLM reasoning";
 
   return (
     <section id="live-demo" className="flex flex-1 flex-col gap-3 pb-4">

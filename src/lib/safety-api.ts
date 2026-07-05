@@ -116,13 +116,13 @@ function hasCjk(text: string) {
   return /[\u3400-\u9fff]/.test(text);
 }
 
-function getOpenAiConfig() {
-  const apiKey = process.env.OPENAI_API_KEY;
+function getGeminiConfig() {
+  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
   if (!apiKey) return null;
 
   return {
     apiKey,
-    model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+    model: process.env.GEMINI_MODEL ?? "gemini-3.5-flash",
   };
 }
 
@@ -192,51 +192,52 @@ function parseOutputText(payload: Record<string, unknown>) {
   return "";
 }
 
+function parseImageDataUrl(imageDataUrl: string) {
+  const match = imageDataUrl.match(/^data:([^;,]+);base64,(.+)$/);
+  if (!match) throw new Error("Attached photo format was not readable. Try attaching a JPEG, PNG, or WEBP image.");
+
+  return {
+    mimeType: match[1],
+    data: match[2],
+  };
+}
+
 async function askReasoningModel(question: string, language: LanguageMode, imageDataUrl?: string) {
-  const config = getOpenAiConfig();
+  const config = getGeminiConfig();
   if (!config) {
-    throw new Error("OPENAI_API_KEY is missing. Add it in Vercel Environment Variables to enable LLM reasoning, OCR, Cantonese, and image understanding.");
+    throw new Error("GEMINI_API_KEY is missing. Add a Google AI Studio Gemini key in Vercel Environment Variables to enable LLM reasoning, OCR, Cantonese, and image understanding.");
   }
 
   const content: Array<Record<string, unknown>> = [
     {
-      type: "input_text",
+      type: "text",
       text: buildPrompt(question, language, Boolean(imageDataUrl)),
     },
   ];
 
   if (imageDataUrl) {
+    const image = parseImageDataUrl(imageDataUrl);
     content.push({
-      type: "input_image",
-      image_url: imageDataUrl,
-      detail: "low",
+      type: "image",
+      data: image.data,
+      mime_type: image.mimeType,
     });
   }
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${config.apiKey}`,
+      "x-goog-api-key": config.apiKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: config.model,
-      input: [
-        {
-          role: "user",
-          content,
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "herald_safety_decision",
-          strict: true,
-          schema: safetyDecisionSchema,
-        },
+      input: content,
+      response_format: {
+        type: "text",
+        mime_type: "application/json",
+        schema: safetyDecisionSchema,
       },
-      max_output_tokens: 900,
-      store: false,
     }),
   });
 
@@ -244,7 +245,7 @@ async function askReasoningModel(question: string, language: LanguageMode, image
 
   if (!response.ok) {
     const error = (payload.error ?? {}) as Record<string, unknown>;
-    throw new Error(String(error.message ?? `OpenAI reasoning failed with HTTP ${response.status}`));
+    throw new Error(String(error.message ?? `Gemini reasoning failed with HTTP ${response.status}`));
   }
 
   const outputText = parseOutputText(payload);
@@ -258,7 +259,7 @@ async function askReasoningModel(question: string, language: LanguageMode, image
   }
 
   if (!decision.reasoning.length) {
-    decision.reasoning = ["The LLM reasoned from the worker question, attached image if present, and Votee safety source context."];
+    decision.reasoning = ["Gemini reasoned from the worker question, attached image if present, and Votee safety source context."];
   }
 
   if (!decision.citations.length) {
@@ -300,7 +301,7 @@ export async function handleSafetyAsk(request: Request) {
 
     return Response.json(
       {
-        mode: "openai-votee-source-pack",
+        mode: "gemini-votee-source-pack",
         risk: decision.risk,
         answer: decision.answer,
         language,
@@ -330,7 +331,7 @@ export async function handleSafetyAsk(request: Request) {
     console.error("LLM reasoning failed.", error);
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "LLM reasoning failed. Check OPENAI_API_KEY and try again.",
+        error: error instanceof Error ? error.message : "LLM reasoning failed. Check GEMINI_API_KEY and try again.",
       },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );

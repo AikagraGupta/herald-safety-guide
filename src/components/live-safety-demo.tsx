@@ -200,7 +200,7 @@ export function LiveSafetyDemo() {
   const risk = result?.risk;
   const RiskIcon = risk ? riskIcon[risk] : ShieldCheck;
   const sourceMode =
-    result?.mode === "openai-votee-source-pack" ? "LLM + Votee source pack" : "LLM reasoning";
+    result?.mode === "gemini-votee-source-pack" ? "Gemini + Votee source pack" : "Gemini reasoning";
 
   return (
     <section id="live-demo" className="flex flex-1 flex-col gap-3 pb-4">
@@ -373,7 +373,7 @@ export function LiveSafetyDemo() {
               </div>
               <ol className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
                 {(result?.reasoning ?? [
-                  "Herald sends the worker question and photo to a multimodal LLM.",
+                  "Herald sends the worker question and photo to Gemini.",
                   "The model reasons over the Votee safety source pack before deciding.",
                 ])
                   .slice(0, 3)
@@ -415,7 +415,7 @@ export function LiveSafetyDemo() {
             <InfoCard icon={<ShieldCheck className="h-4 w-4 text-foreground/70" />} title="Decision rationale">
               <ol className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
                 {(result?.reasoning ?? [
-                  "Herald sends text plus any photo to a hosted multimodal LLM.",
+                  "Herald sends text plus any photo to Google Gemini.",
                   "The prompt includes the Votee source pack as cited safety memory.",
                   "The model returns STOP, CHECK, OK, or ASK with reasoning and citations.",
                 ]).map((step) => (

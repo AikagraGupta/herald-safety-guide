@@ -20,13 +20,13 @@ Open http://127.0.0.1:5173.
 
 ## Votee Usage
 
-Herald uses Votee as the safety-memory/source-pack layer and a hosted multimodal LLM
+Herald uses Votee as the safety-memory/source-pack layer and Google Gemini
 as the reasoning layer. This keeps the demo easy to deploy while still grounding the
 answer in Votee-branded safety resources.
 
 1. `/api/ask` receives the worker question.
 2. If a camera photo is attached, the frontend sends the image data URL to `/api/ask`.
-3. The backend sends text plus image to the OpenAI Responses API for OCR, visual
+3. The backend sends text plus image to the Gemini API for OCR, visual
    inspection, Cantonese/English understanding, and safety reasoning.
 4. The prompt includes the Votee safety source pack as the cited memory layer.
 5. The model returns strict JSON: `ASK`, `STOP`, `CHECK`, or `OK`, plus answer,
@@ -35,12 +35,12 @@ answer in Votee-branded safety resources.
 Configure the live reasoning model:
 
 ```powershell
-$env:OPENAI_API_KEY="your-openai-api-key"
-$env:OPENAI_MODEL="gpt-4o-mini"
+$env:GEMINI_API_KEY="your-google-ai-studio-api-key"
+$env:GEMINI_MODEL="gemini-3.5-flash"
 npm run dev
 ```
 
-For Vercel, add `OPENAI_API_KEY` and optionally `OPENAI_MODEL` in Project Settings ->
+For Vercel, add `GEMINI_API_KEY` and optionally `GEMINI_MODEL` in Project Settings ->
 Environment Variables, then redeploy.
 
 Relevant files:

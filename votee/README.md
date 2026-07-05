@@ -4,11 +4,11 @@ Herald uses Votee's Beever Atlas pattern as the memory layer for physical-worker
 guidance.
 
 For the hackathon prototype, the app uses this Atlas-ready source pack as the Votee
-memory layer and sends the worker question/photo to a hosted multimodal LLM for the
+memory layer and sends the worker question/photo to Google Gemini for the
 actual reasoning, OCR, Cantonese/English handling, and structured safety decision.
 
 ```powershell
-$env:OPENAI_API_KEY="your-openai-api-key"
+$env:GEMINI_API_KEY="your-google-ai-studio-api-key"
 npm run dev
 ```
 

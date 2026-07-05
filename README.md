@@ -20,13 +20,14 @@ Open http://127.0.0.1:5173.
 
 ## Votee Usage
 
-Herald uses Votee as the safety-memory/source-pack layer and Google Gemini
+Herald uses Votee as the safety-memory/source-pack layer and Pollinations' hosted
+free OpenAI-compatible model endpoint
 as the reasoning layer. This keeps the demo easy to deploy while still grounding the
 answer in Votee-branded safety resources.
 
 1. `/api/ask` receives the worker question.
 2. If a camera photo is attached, the frontend sends the image data URL to `/api/ask`.
-3. The backend sends text plus image to the Gemini API for OCR, visual
+3. The backend sends text plus image to Pollinations for OCR, visual
    inspection, Cantonese/English understanding, and safety reasoning.
 4. The prompt includes the Votee safety source pack as the cited memory layer.
 5. The model returns strict JSON: `ASK`, `STOP`, `CHECK`, or `OK`, plus answer,
@@ -35,13 +36,12 @@ answer in Votee-branded safety resources.
 Configure the live reasoning model:
 
 ```powershell
-$env:GEMINI_API_KEY="your-google-ai-studio-api-key"
-$env:GEMINI_MODEL="gemini-2.0-flash"
 npm run dev
 ```
 
-For Vercel, add `GEMINI_API_KEY` and optionally `GEMINI_MODEL` in Project Settings ->
-Environment Variables, then redeploy.
+No API key is required for the hackathon demo. Pollinations anonymous access is rate
+limited, so optionally add `POLLINATIONS_API_KEY` in Vercel if you register for a
+free token and need better limits.
 
 Relevant files:
 

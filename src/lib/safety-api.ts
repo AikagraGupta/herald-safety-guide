@@ -69,13 +69,10 @@ function hasCjk(text: string) {
   return /[\u3400-\u9fff]/.test(text);
 }
 
-function getGeminiConfig() {
-  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
-  if (!apiKey) return null;
-
+function getPollinationsConfig() {
   return {
-    apiKey,
-    model: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+    apiKey: process.env.POLLINATIONS_API_KEY,
+    model: process.env.POLLINATIONS_MODEL ?? "openai",
   };
 }
 
@@ -84,7 +81,7 @@ function buildPrompt(question: string, language: LanguageMode, hasImage: boolean
 
   return [
     "You are Herald, an AI safety copilot for physical workers: firefighters, EMTs, utility crews, warehouse teams, maintenance workers, construction crews, facilities staff, and field operators.",
-    "Use the worker's natural-language question, any attached image, and the Votee safety source pack below. The Votee pack is the cited safety memory. The LLM is the reasoning engine.",
+    "Use the worker's natural-language question, any attached image, and the Votee safety source pack below. The Votee pack is the cited safety memory. The hosted LLM is the reasoning engine.",
     "If an image is attached, inspect it for hazards and OCR any visible labels, signs, panels, gauges, permits, tags, warnings, or written instructions. Put only relevant OCR/visual observations in observedText.",
     "Do not use canned examples. Make a fresh decision for this exact situation.",
     "If the question or image lacks enough context, choose ASK and ask for the missing details instead of guessing.",
@@ -158,6 +155,13 @@ function normalizeDecision(value: unknown): LlmSafetyDecision | null {
 }
 
 function parseOutputText(payload: Record<string, unknown>) {
+  const choices = Array.isArray(payload.choices) ? payload.choices : [];
+  for (const choice of choices) {
+    const message = (choice as Record<string, unknown>).message as Record<string, unknown> | undefined;
+    const content = message?.content;
+    if (typeof content === "string" && content.trim()) return content.trim();
+  }
+
   if (typeof payload.output_text === "string") return payload.output_text;
 
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
@@ -194,44 +198,47 @@ function parseImageDataUrl(imageDataUrl: string) {
 }
 
 async function askReasoningModel(question: string, language: LanguageMode, imageDataUrl?: string) {
-  const config = getGeminiConfig();
-  if (!config) {
-    throw new Error("GEMINI_API_KEY is missing. Add a Google AI Studio Gemini key in Vercel Environment Variables to enable LLM reasoning, OCR, Cantonese, and image understanding.");
-  }
+  const config = getPollinationsConfig();
 
-  const parts: Array<Record<string, unknown>> = [
+  const content: Array<Record<string, unknown>> = [
     {
+      type: "text",
       text: buildPrompt(question, language, Boolean(imageDataUrl)),
     },
   ];
 
   if (imageDataUrl) {
-    const image = parseImageDataUrl(imageDataUrl);
-    parts.push({
-      inline_data: {
-        mime_type: image.mimeType,
-        data: image.data,
+    parseImageDataUrl(imageDataUrl);
+    content.push({
+      type: "image_url",
+      image_url: {
+        url: imageDataUrl,
       },
     });
   }
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, {
+  const response = await fetch("https://text.pollinations.ai/openai", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
     },
     body: JSON.stringify({
-      contents: [
+      model: config.model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are Herald. Return only valid JSON for a physical-worker safety decision. Never include markdown fences.",
+        },
         {
           role: "user",
-          parts,
+          content,
         },
       ],
-      generationConfig: {
-        response_mime_type: "application/json",
-        temperature: 0.2,
-        max_output_tokens: 900,
-      },
+      temperature: 0.2,
+      max_tokens: 900,
+      stream: false,
     }),
   });
 
@@ -239,7 +246,7 @@ async function askReasoningModel(question: string, language: LanguageMode, image
 
   if (!response.ok) {
     const error = (payload.error ?? {}) as Record<string, unknown>;
-    throw new Error(String(error.message ?? `Gemini reasoning failed with HTTP ${response.status}`));
+    throw new Error(String(error.message ?? `Pollinations reasoning failed with HTTP ${response.status}`));
   }
 
   const outputText = parseOutputText(payload);
@@ -253,7 +260,7 @@ async function askReasoningModel(question: string, language: LanguageMode, image
   }
 
   if (!decision.reasoning.length) {
-    decision.reasoning = ["Gemini reasoned from the worker question, attached image if present, and Votee safety source context."];
+    decision.reasoning = ["Pollinations reasoned from the worker question, attached image if present, and Votee safety source context."];
   }
 
   if (!decision.citations.length) {
@@ -295,7 +302,7 @@ export async function handleSafetyAsk(request: Request) {
 
     return Response.json(
       {
-        mode: "gemini-votee-source-pack",
+        mode: "pollinations-votee-source-pack",
         risk: decision.risk,
         answer: decision.answer,
         language,
@@ -325,7 +332,7 @@ export async function handleSafetyAsk(request: Request) {
     console.error("LLM reasoning failed.", error);
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "LLM reasoning failed. Check GEMINI_API_KEY and try again.",
+        error: error instanceof Error ? error.message : "Free LLM reasoning failed. Try again in a few seconds.",
       },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );

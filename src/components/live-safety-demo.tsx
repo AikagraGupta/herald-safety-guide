@@ -11,6 +11,7 @@ import {
   RadioTower,
   Send,
   ShieldCheck,
+  Upload,
   Volume2,
   VolumeX,
   X,
@@ -74,6 +75,52 @@ function speechLang(language: LanguageMode, text = "") {
   return "en-HK";
 }
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => (typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read the image.")));
+    reader.onerror = () => reject(new Error("Could not read the image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load the image."));
+    image.src = src;
+  });
+}
+
+async function prepareImageDataUrl(file: File) {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Attach an image file: JPEG, PNG, WEBP, or a phone photo.");
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImage(objectUrl);
+    const maxSide = 1600;
+    const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return readFileAsDataUrl(file);
+
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } catch {
+    return readFileAsDataUrl(file);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export function LiveSafetyDemo() {
   const [language, setLanguage] = useState<LanguageMode>("yue");
   const [question, setQuestion] = useState("");
@@ -85,8 +132,10 @@ export function LiveSafetyDemo() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [photoName, setPhotoName] = useState<string | null>(null);
+  const [photoProcessing, setPhotoProcessing] = useState(false);
   const recognitionRef = useRef<any>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -172,21 +221,30 @@ export function LiveSafetyDemo() {
     recognition.start();
   }
 
-  function handlePhoto(file: File | undefined) {
+  async function handlePhoto(file: File | undefined) {
     if (!file) return;
-    if (file.size > 4_500_000) {
-      setError("Photo is too large for the demo. Try a smaller image or screenshot.");
-      return;
-    }
 
     if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoPreview(URL.createObjectURL(file));
+    const previewUrl = URL.createObjectURL(file);
+    setPhotoPreview(previewUrl);
     setPhotoName(file.name);
+    setPhotoDataUrl(null);
+    setPhotoProcessing(true);
+    setError(null);
 
-    const reader = new FileReader();
-    reader.onload = () => setPhotoDataUrl(typeof reader.result === "string" ? reader.result : null);
-    reader.onerror = () => setError("Could not read the photo. Try another image.");
-    reader.readAsDataURL(file);
+    try {
+      setPhotoDataUrl(await prepareImageDataUrl(file));
+    } catch (err) {
+      URL.revokeObjectURL(previewUrl);
+      setError(err instanceof Error ? err.message : "Could not read the photo. Try another image.");
+      setPhotoPreview(null);
+      setPhotoDataUrl(null);
+      setPhotoName(null);
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+      if (uploadInputRef.current) uploadInputRef.current.value = "";
+    } finally {
+      setPhotoProcessing(false);
+    }
   }
 
   function clearPhoto() {
@@ -194,7 +252,9 @@ export function LiveSafetyDemo() {
     setPhotoPreview(null);
     setPhotoDataUrl(null);
     setPhotoName(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setPhotoProcessing(false);
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (uploadInputRef.current) uploadInputRef.current.value = "";
   }
 
   const risk = result?.risk;
@@ -274,9 +334,11 @@ export function LiveSafetyDemo() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 text-[12px] font-medium text-foreground">
                   <ImageIcon className="h-3.5 w-3.5" />
-                  Site photo attached
+                  {photoProcessing ? "Preparing photo" : "Site photo attached"}
                 </div>
-                <div className="truncate text-[11.5px] text-muted-foreground">{photoName}</div>
+                <div className="truncate text-[11.5px] text-muted-foreground">
+                  {photoProcessing ? "Resizing for recognition..." : photoName}
+                </div>
               </div>
               <button
                 type="button"
@@ -289,7 +351,7 @@ export function LiveSafetyDemo() {
             </div>
           )}
 
-          <div className="mt-3 grid grid-cols-[1fr_1fr_1.35fr] gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_1.35fr]">
             <button
               type="button"
               onClick={startVoice}
@@ -304,26 +366,41 @@ export function LiveSafetyDemo() {
             </button>
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => cameraInputRef.current?.click()}
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--panel)] text-[13px] font-medium text-foreground"
             >
               <Camera className="h-4 w-4" />
-              Photo
+              Camera
+            </button>
+            <button
+              type="button"
+              onClick={() => uploadInputRef.current?.click()}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--panel)] text-[13px] font-medium text-foreground"
+            >
+              <Upload className="h-4 w-4" />
+              Upload
             </button>
             <button
               type="button"
               onClick={() => askHerald()}
-              disabled={loading || (!question.trim() && !photoDataUrl)}
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-4 text-[13px] font-medium text-[var(--primary-foreground)] transition disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={loading || photoProcessing || (!question.trim() && !photoDataUrl)}
+              className="col-span-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-4 text-[13px] font-medium text-[var(--primary-foreground)] transition disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1"
             >
-              {loading ? "Checking..." : "Check"}
+              {loading ? "Checking..." : photoProcessing ? "Preparing..." : "Check"}
               <Send className="h-4 w-4" />
             </button>
             <input
-              ref={fileInputRef}
+              ref={cameraInputRef}
               type="file"
               accept="image/*"
               capture="environment"
+              className="hidden"
+              onChange={(event) => handlePhoto(event.target.files?.[0])}
+            />
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/*"
               className="hidden"
               onChange={(event) => handlePhoto(event.target.files?.[0])}
             />

@@ -18,6 +18,7 @@ type LlmSafetyDecision = {
   };
   citations: Citation[];
   observedText?: string;
+  fallback?: boolean;
 };
 
 type LooseDecision = Partial<LlmSafetyDecision> & {
@@ -89,10 +90,11 @@ function getPollinationsConfig() {
   return {
     apiKey: process.env.POLLINATIONS_API_KEY,
     model: process.env.POLLINATIONS_MODEL ?? "openai",
+    visionModel: process.env.POLLINATIONS_VISION_MODEL ?? "openai",
   };
 }
 
-function buildPrompt(question: string, language: LanguageMode, hasImage: boolean) {
+function buildPrompt(question: string, language: LanguageMode, hasImage: boolean, imageOcrText = "") {
   const outputLanguage = language === "yue" ? "Cantonese, Hong Kong style" : "English";
 
   return [
@@ -129,6 +131,7 @@ function buildPrompt(question: string, language: LanguageMode, hasImage: boolean
       2,
     ),
     hasImage ? "Image status: attached." : "Image status: none.",
+    imageOcrText ? `OCR text extracted from the attached image: ${imageOcrText}` : "OCR text extracted from the attached image: none.",
     "Votee safety source pack:",
     JSON.stringify(sourcePack, null, 2),
     `Worker question: ${question}`,
@@ -267,6 +270,8 @@ function hasHighRiskSignal(text: string) {
 
 function safeFallbackDecision(question: string, language: LanguageMode, reason: string): LlmSafetyDecision {
   const highRisk = hasHighRiskSignal(question);
+  const electricalWet =
+    /(live|electric|electrical|panel|breaker|wire)/i.test(question) && /(wet|water|floor|spill)/i.test(question);
   const isYue = language === "yue";
 
   return {
@@ -276,14 +281,22 @@ function safeFallbackDecision(question: string, language: LanguageMode, reason: 
         ? "先停低，唔好繼續做。現場可能有高風險情況，等主管或合資格人員確認之後先再開工。"
         : "我需要多少少現場資料先可以安全判斷。講清楚位置、你準備做咩、同見到咩危險。"
       : highRisk
-        ? "Stop for now. Do not continue until a supervisor or competent person confirms the condition is safe."
+        ? electricalWet
+          ? "Stop. The photo/OCR indicates a live electrical panel with wet floor conditions. Do not open the panel until it is isolated, dried, and verified safe by a competent person."
+          : "Stop for now. Do not continue until a supervisor or competent person confirms the condition is safe."
         : "I need a little more site context before making a safety call. Tell me the location, task, and visible hazard.",
     steps: isYue
       ? ["停低並保持安全距離。", "補充位置、工作動作、可見危險或加相片。", "如涉及電、火、煙、氣體、高空或密閉空間，立即通知主管。"]
-      : ["Pause and keep a safe distance.", "Add the location, intended action, visible hazard, or a photo.", "If electricity, fire, smoke, gas, height, or confined space is involved, notify a supervisor."],
+      : electricalWet
+        ? ["Keep people away from the wet area and the panel.", "Ask a supervisor or qualified electrical worker to isolate, lock out, tag, and test the panel.", "Dry and control the area before any panel access resumes."]
+        : ["Pause and keep a safe distance.", "Add the location, intended action, visible hazard, or a photo.", "If electricity, fire, smoke, gas, height, or confined space is involved, notify a supervisor."],
     reasoning: [
       "The hosted model response could not be safely structured, so Herald used a conservative safety fallback.",
-      highRisk ? "High-risk words were present in the worker question." : "The worker question needs more site detail before a safe decision.",
+      electricalWet
+        ? "OCR or worker text indicates wet-floor and live-electrical-panel risk."
+        : highRisk
+          ? "High-risk words were present in the worker question or photo text."
+          : "The worker question needs more site detail before a safe decision.",
       reason,
     ],
     supervisor: {
@@ -294,13 +307,24 @@ function safeFallbackDecision(question: string, language: LanguageMode, reason: 
     },
     citations: [
       {
-        title: "Votee Frontline Uncertainty Rule",
-        source: "frontline-uncertainty",
-        excerpt: "If context is missing, ask for more details instead of inventing a safety answer.",
+        title: electricalWet ? "Votee Electrical Isolation SOP" : "Votee Frontline Uncertainty Rule",
+        source: electricalWet ? "electrical-isolation" : "frontline-uncertainty",
+        excerpt: electricalWet
+          ? "Electrical work begins only after isolation, lockout/tagout, and testing by a competent person. Wet conditions near electrical equipment should be treated as high risk until controlled."
+          : "If context is missing, ask for more details instead of inventing a safety answer.",
       },
     ],
     observedText: "",
+    fallback: true,
   };
+}
+
+function safeFallbackWithOcr(question: string, language: LanguageMode, reason: string, imageOcrText = "") {
+  const decision = safeFallbackDecision(`${question}\n${imageOcrText}`, language, reason);
+  if (imageOcrText) {
+    decision.observedText = imageOcrText;
+  }
+  return decision;
 }
 
 function parseOutputText(payload: Record<string, unknown>) {
@@ -346,13 +370,59 @@ function parseImageDataUrl(imageDataUrl: string) {
   };
 }
 
+async function extractPhotoText(imageDataUrl: string, language: LanguageMode) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6500);
+
+  try {
+    const form = new URLSearchParams();
+    form.set("base64Image", imageDataUrl);
+    form.set("language", language === "yue" ? "cht" : "eng");
+    form.set("isOverlayRequired", "false");
+    form.set("scale", "true");
+    form.set("OCREngine", "2");
+
+    const response = await fetch("https://api.ocr.space/parse/image", {
+      method: "POST",
+      headers: {
+        apikey: process.env.OCR_SPACE_API_KEY ?? "helloworld",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form,
+      signal: controller.signal,
+    });
+
+    const payload = (await response.json()) as {
+      ParsedResults?: Array<{ ParsedText?: string }>;
+      IsErroredOnProcessing?: boolean;
+    };
+
+    if (!response.ok || payload.IsErroredOnProcessing) return "";
+
+    return (
+      payload.ParsedResults?.map((result) => result.ParsedText?.trim())
+        .filter(Boolean)
+        .join("\n")
+        .replace(/\s+\n/g, "\n")
+        .trim()
+        .slice(0, 1200) ?? ""
+    );
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function askReasoningModel(question: string, language: LanguageMode, imageDataUrl?: string) {
   const config = getPollinationsConfig();
+  const model = imageDataUrl ? config.visionModel : config.model;
+  const imageOcrText = imageDataUrl ? await extractPhotoText(imageDataUrl, language) : "";
 
   const content: Array<Record<string, unknown>> = [
     {
       type: "text",
-      text: buildPrompt(question, language, Boolean(imageDataUrl)),
+      text: buildPrompt(question, language, Boolean(imageDataUrl), imageOcrText),
     },
   ];
 
@@ -366,45 +436,50 @@ async function askReasoningModel(question: string, language: LanguageMode, image
     });
   }
 
-  const response = await fetch("https://text.pollinations.ai/openai", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are Herald. Return one valid JSON object only. Do not use arrays, markdown, comments, or trailing commas.",
-        },
-        {
-          role: "user",
-          content,
-        },
-      ],
-      temperature: 0.2,
-      max_tokens: 900,
-      stream: false,
-      response_format: { type: "json_object" },
-    }),
-  });
+  let response: Response;
+  let payload: Record<string, unknown>;
 
-  const payload = (await response.json()) as Record<string, unknown>;
+  try {
+    response = await fetch("https://text.pollinations.ai/openai", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are Herald. Return one valid JSON object only. Do not use arrays, markdown, comments, or trailing commas.",
+          },
+          {
+            role: "user",
+            content,
+          },
+        ],
+        temperature: 0.2,
+        max_tokens: 900,
+        stream: false,
+        response_format: { type: "json_object" },
+      }),
+    });
+    payload = (await response.json()) as Record<string, unknown>;
+  } catch {
+    return safeFallbackWithOcr(question, language, "The hosted model was temporarily unavailable after OCR completed.", imageOcrText);
+  }
 
   if (!response.ok) {
-    const error = (payload.error ?? {}) as Record<string, unknown>;
-    throw new Error(String(error.message ?? `Pollinations reasoning failed with HTTP ${response.status}`));
+    return safeFallbackWithOcr(question, language, `The hosted model returned HTTP ${response.status} after OCR completed.`, imageOcrText);
   }
 
   const outputText = parseOutputText(payload);
-  if (!outputText) return safeFallbackDecision(question, language, "The hosted model returned an empty response.");
+  if (!outputText) return safeFallbackWithOcr(question, language, "The hosted model returned an empty response.", imageOcrText);
 
   const decision =
     parseLooseDecision(outputText) ??
-    safeFallbackDecision(question, language, "The hosted model returned malformed JSON, so Herald did not expose the parsing error.");
+    safeFallbackWithOcr(question, language, "The hosted model returned malformed JSON, so Herald did not expose the parsing error.", imageOcrText);
 
   if (!decision.steps.length) {
     decision.steps = ["Pause and confirm the site condition.", "Escalate to a competent supervisor if risk is unclear."];
@@ -422,6 +497,10 @@ async function askReasoningModel(question: string, language: LanguageMode, image
         excerpt: "If context is missing, ask for more details instead of inventing a safety answer.",
       },
     ];
+  }
+
+  if (!decision.observedText && imageOcrText) {
+    decision.observedText = imageOcrText;
   }
 
   return decision;
@@ -453,7 +532,7 @@ export async function handleSafetyAsk(request: Request) {
 
     return Response.json(
       {
-        mode: "pollinations-votee-source-pack",
+        mode: decision.fallback ? "safety-fallback-votee-source-pack" : "pollinations-votee-source-pack",
         risk: decision.risk,
         answer: decision.answer,
         language,
@@ -468,7 +547,7 @@ export async function handleSafetyAsk(request: Request) {
             time: new Date(startedAt).toISOString(),
             question: question || "[site photo only]",
             risk: decision.risk,
-            ruleId: "llm-reasoned-votee-source-pack",
+            ruleId: decision.fallback ? "safe-response-fallback" : "llm-reasoned-votee-source-pack",
           },
         ],
         latencyMs: Math.max(45, Date.now() - startedAt),

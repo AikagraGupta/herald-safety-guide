@@ -99,9 +99,16 @@ function getAicooConfig() {
   const apiKey = process.env.AICOO_API_KEY ?? process.env.PULSE_API_KEY;
   if (!apiKey) return null;
 
+  const rawBaseUrl = (process.env.AICOO_API_URL ?? "https://www.aicoo.io/api/v1").trim();
+  const baseUrl = /^ttps?:\/\//i.test(rawBaseUrl)
+    ? `h${rawBaseUrl}`
+    : /^https?:\/\//i.test(rawBaseUrl)
+      ? rawBaseUrl
+      : `https://${rawBaseUrl}`;
+
   return {
     apiKey,
-    baseUrl: (process.env.AICOO_API_URL ?? "https://www.aicoo.io/api/v1").replace(/\/$/, ""),
+    baseUrl: baseUrl.replace(/\/$/, ""),
     model: process.env.AICOO_MODEL,
   };
 }
@@ -294,7 +301,7 @@ function safeFallbackDecision(question: string, language: LanguageMode, reason: 
         : "我需要多少少現場資料先可以安全判斷。講清楚位置、你準備做咩、同見到咩危險。"
       : highRisk
         ? electricalWet
-          ? "Stop. The photo/OCR indicates a live electrical panel with wet floor conditions. Do not open the panel until it is isolated, dried, and verified safe by a competent person."
+          ? "Stop. The situation indicates a live electrical panel with wet floor conditions. Do not open the panel until it is isolated, dried, and verified safe by a competent person."
           : "Stop for now. Do not continue until a supervisor or competent person confirms the condition is safe."
         : "I need a little more site context before making a safety call. Tell me the location, task, and visible hazard.",
     steps: isYue

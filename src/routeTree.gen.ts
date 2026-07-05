@@ -9,38 +9,139 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ResourcesRouteImport } from './routes/resources'
+import { Route as PlatformRouteImport } from './routes/platform'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PlatformWorkerGuidanceRouteImport } from './routes/platform.worker-guidance'
+import { Route as PlatformSafetyMemoryRouteImport } from './routes/platform.safety-memory'
+import { Route as PlatformComplianceLoggingRouteImport } from './routes/platform.compliance-logging'
 
+const ResourcesRoute = ResourcesRouteImport.update({
+  id: '/resources',
+  path: '/resources',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlatformRoute = PlatformRouteImport.update({
+  id: '/platform',
+  path: '/platform',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlatformWorkerGuidanceRoute = PlatformWorkerGuidanceRouteImport.update({
+  id: '/worker-guidance',
+  path: '/worker-guidance',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformSafetyMemoryRoute = PlatformSafetyMemoryRouteImport.update({
+  id: '/safety-memory',
+  path: '/safety-memory',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformComplianceLoggingRoute =
+  PlatformComplianceLoggingRouteImport.update({
+    id: '/compliance-logging',
+    path: '/compliance-logging',
+    getParentRoute: () => PlatformRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/platform': typeof PlatformRouteWithChildren
+  '/resources': typeof ResourcesRoute
+  '/platform/compliance-logging': typeof PlatformComplianceLoggingRoute
+  '/platform/safety-memory': typeof PlatformSafetyMemoryRoute
+  '/platform/worker-guidance': typeof PlatformWorkerGuidanceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/platform': typeof PlatformRouteWithChildren
+  '/resources': typeof ResourcesRoute
+  '/platform/compliance-logging': typeof PlatformComplianceLoggingRoute
+  '/platform/safety-memory': typeof PlatformSafetyMemoryRoute
+  '/platform/worker-guidance': typeof PlatformWorkerGuidanceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/platform': typeof PlatformRouteWithChildren
+  '/resources': typeof ResourcesRoute
+  '/platform/compliance-logging': typeof PlatformComplianceLoggingRoute
+  '/platform/safety-memory': typeof PlatformSafetyMemoryRoute
+  '/platform/worker-guidance': typeof PlatformWorkerGuidanceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/platform'
+    | '/resources'
+    | '/platform/compliance-logging'
+    | '/platform/safety-memory'
+    | '/platform/worker-guidance'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/about'
+    | '/platform'
+    | '/resources'
+    | '/platform/compliance-logging'
+    | '/platform/safety-memory'
+    | '/platform/worker-guidance'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/platform'
+    | '/resources'
+    | '/platform/compliance-logging'
+    | '/platform/safety-memory'
+    | '/platform/worker-guidance'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
+  PlatformRoute: typeof PlatformRouteWithChildren
+  ResourcesRoute: typeof ResourcesRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/resources': {
+      id: '/resources'
+      path: '/resources'
+      fullPath: '/resources'
+      preLoaderRoute: typeof ResourcesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/platform': {
+      id: '/platform'
+      path: '/platform'
+      fullPath: '/platform'
+      preLoaderRoute: typeof PlatformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +149,51 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/platform/worker-guidance': {
+      id: '/platform/worker-guidance'
+      path: '/worker-guidance'
+      fullPath: '/platform/worker-guidance'
+      preLoaderRoute: typeof PlatformWorkerGuidanceRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/safety-memory': {
+      id: '/platform/safety-memory'
+      path: '/safety-memory'
+      fullPath: '/platform/safety-memory'
+      preLoaderRoute: typeof PlatformSafetyMemoryRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/compliance-logging': {
+      id: '/platform/compliance-logging'
+      path: '/compliance-logging'
+      fullPath: '/platform/compliance-logging'
+      preLoaderRoute: typeof PlatformComplianceLoggingRouteImport
+      parentRoute: typeof PlatformRoute
+    }
   }
 }
 
+interface PlatformRouteChildren {
+  PlatformComplianceLoggingRoute: typeof PlatformComplianceLoggingRoute
+  PlatformSafetyMemoryRoute: typeof PlatformSafetyMemoryRoute
+  PlatformWorkerGuidanceRoute: typeof PlatformWorkerGuidanceRoute
+}
+
+const PlatformRouteChildren: PlatformRouteChildren = {
+  PlatformComplianceLoggingRoute: PlatformComplianceLoggingRoute,
+  PlatformSafetyMemoryRoute: PlatformSafetyMemoryRoute,
+  PlatformWorkerGuidanceRoute: PlatformWorkerGuidanceRoute,
+}
+
+const PlatformRouteWithChildren = PlatformRoute._addFileChildren(
+  PlatformRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
+  PlatformRoute: PlatformRouteWithChildren,
+  ResourcesRoute: ResourcesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

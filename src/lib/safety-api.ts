@@ -7,6 +7,12 @@ type Citation = {
   excerpt: string;
 };
 
+type ConversationTurn = {
+  role: "worker" | "herald";
+  content: string;
+  risk?: Risk;
+};
+
 type LlmSafetyDecision = {
   risk: Risk;
   answer: string;
@@ -113,12 +119,43 @@ function getAicooConfig() {
   };
 }
 
-function buildPrompt(question: string, language: LanguageMode, hasImage: boolean, imageOcrText = "") {
+function normalizeHistory(value: unknown): ConversationTurn[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .slice(-8)
+    .map((turn) => {
+      const item = turn as Record<string, unknown>;
+      const role = item.role === "herald" ? "herald" : item.role === "worker" ? "worker" : null;
+      const content = typeof item.content === "string" ? item.content.trim() : "";
+      const risk = item.risk && ["STOP", "CHECK", "OK", "ASK"].includes(String(item.risk)) ? (String(item.risk) as Risk) : undefined;
+      if (!role || !content) return null;
+      return { role, content: content.slice(0, 700), risk };
+    })
+    .filter((turn): turn is ConversationTurn => Boolean(turn));
+}
+
+function formatHistory(history: ConversationTurn[]) {
+  if (!history.length) return "Conversation so far: none.";
+
+  return [
+    "Conversation so far:",
+    ...history.map((turn, index) => {
+      const speaker = turn.role === "worker" ? "Worker" : "Herald";
+      const risk = turn.risk ? ` (${turn.risk})` : "";
+      return `${index + 1}. ${speaker}${risk}: ${turn.content}`;
+    }),
+  ].join("\n");
+}
+
+function buildPrompt(question: string, language: LanguageMode, hasImage: boolean, imageOcrText = "", history: ConversationTurn[] = []) {
   const outputLanguage = language === "yue" ? "Cantonese, Hong Kong style" : "English";
 
   return [
     "You are Herald, an AI safety copilot for physical workers: firefighters, EMTs, utility crews, warehouse teams, maintenance workers, construction crews, facilities staff, and field operators.",
     "Use the worker's natural-language question, any attached image, and the Votee safety source pack below. The Votee pack is the cited safety memory. The hosted LLM is the reasoning engine.",
+    "Use the conversation so far as short-term memory. If the latest worker message is a follow-up, combine it with the previous question and Herald answer before deciding.",
+    "When Herald previously asked for more context and the worker now provides it, make the final safety call if enough context is available. If context is still missing, ask only for the missing details.",
     "If an image is attached, inspect it for hazards and OCR any visible labels, signs, panels, gauges, permits, tags, warnings, or written instructions. Put only relevant OCR/visual observations in observedText.",
     "Do not use canned examples. Make a fresh decision for this exact situation.",
     "If the question or image lacks enough context, choose ASK and ask for the missing details instead of guessing.",
@@ -151,9 +188,10 @@ function buildPrompt(question: string, language: LanguageMode, hasImage: boolean
     ),
     hasImage ? "Image status: attached." : "Image status: none.",
     imageOcrText ? `OCR text extracted from the attached image: ${imageOcrText}` : "OCR text extracted from the attached image: none.",
+    formatHistory(history),
     "Votee safety source pack:",
     JSON.stringify(sourcePack, null, 2),
-    `Worker question: ${question}`,
+    `Latest worker message: ${question}`,
   ].join("\n\n");
 }
 
@@ -479,12 +517,18 @@ async function extractPhotoText(imageDataUrl: string, language: LanguageMode) {
   }
 }
 
-async function askAicooReasoningModel(question: string, language: LanguageMode, hasImage: boolean, imageOcrText: string) {
+async function askAicooReasoningModel(
+  question: string,
+  language: LanguageMode,
+  hasImage: boolean,
+  imageOcrText: string,
+  history: ConversationTurn[],
+) {
   const config = getAicooConfig();
   if (!config) return null;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Number(process.env.AICOO_TIMEOUT_MS ?? 22000));
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.AICOO_TIMEOUT_MS ?? 35000));
 
   try {
     const response = await fetch(`${config.baseUrl}/chat`, {
@@ -494,7 +538,7 @@ async function askAicooReasoningModel(question: string, language: LanguageMode, 
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        message: buildPrompt(question, language, hasImage, imageOcrText),
+        message: buildPrompt(question, language, hasImage, imageOcrText, history),
         stream: false,
         temperature: 0.2,
         ...(config.model ? { model: config.model } : {}),
@@ -520,17 +564,17 @@ async function askAicooReasoningModel(question: string, language: LanguageMode, 
   }
 }
 
-async function askReasoningModel(question: string, language: LanguageMode, imageDataUrl?: string) {
+async function askReasoningModel(question: string, language: LanguageMode, imageDataUrl?: string, history: ConversationTurn[] = []) {
   const config = getPollinationsConfig();
   const model = imageDataUrl ? config.visionModel : config.model;
   const imageOcrText = imageDataUrl ? await extractPhotoText(imageDataUrl, language) : "";
-  const aicooDecision = await askAicooReasoningModel(question, language, Boolean(imageDataUrl), imageOcrText);
+  const aicooDecision = await askAicooReasoningModel(question, language, Boolean(imageDataUrl), imageOcrText, history);
   if (aicooDecision) return aicooDecision;
 
   const content: Array<Record<string, unknown>> = [
     {
       type: "text",
-      text: buildPrompt(question, language, Boolean(imageDataUrl), imageOcrText),
+      text: buildPrompt(question, language, Boolean(imageDataUrl), imageOcrText, history),
     },
   ];
 
@@ -621,7 +665,7 @@ export async function handleSafetyAsk(request: Request) {
     return Response.json({ error: "Use POST for safety questions." }, { status: 405 });
   }
 
-  let body: { question?: string; language?: LanguageMode; imageDataUrl?: string };
+  let body: { question?: string; language?: LanguageMode; imageDataUrl?: string; history?: unknown };
 
   try {
     body = await request.json();
@@ -636,9 +680,15 @@ export async function handleSafetyAsk(request: Request) {
 
   const startedAt = Date.now();
   const language: LanguageMode = body.language === "en" && !hasCjk(question ?? "") ? "en" : "yue";
+  const history = normalizeHistory(body.history);
 
   try {
-    const decision = await askReasoningModel(question || "Please inspect this site photo and advise what the worker should do.", language, body.imageDataUrl);
+    const decision = await askReasoningModel(
+      question || "Please inspect this site photo and advise what the worker should do.",
+      language,
+      body.imageDataUrl,
+      history,
+    );
     const mode = decision.fallback
       ? "safety-fallback-votee-source-pack"
       : decision.provider === "aicoo"

@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   Mic,
   RadioTower,
+  RefreshCcw,
   Send,
   ShieldCheck,
   Volume2,
@@ -51,6 +52,15 @@ type AskResult = {
 
 type LanguageMode = "yue" | "en";
 
+type ChatTurn = {
+  role: "worker" | "herald";
+  content: string;
+  risk?: AskResult["risk"];
+  time: string;
+};
+
+const MEMORY_STORAGE_KEY = "herald-session-memory-v1";
+
 const riskStyles = {
   STOP: "border-[var(--danger)]/25 bg-[var(--danger)]/10 text-[var(--danger)]",
   CHECK: "border-[var(--gold)]/30 bg-[var(--gold)]/12 text-[var(--gold)]",
@@ -64,6 +74,27 @@ const riskIcon = {
   OK: CheckCircle2,
   ASK: BadgeHelp,
 };
+
+function normalizeSavedMemory(value: unknown): ChatTurn[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .slice(-10)
+    .map((turn) => {
+      const item = turn as Record<string, unknown>;
+      const role = item.role === "herald" ? "herald" : item.role === "worker" ? "worker" : null;
+      const content = typeof item.content === "string" ? item.content.trim() : "";
+      const risk = ["STOP", "CHECK", "OK", "ASK"].includes(String(item.risk)) ? (String(item.risk) as AskResult["risk"]) : undefined;
+      const time = typeof item.time === "string" ? item.time : new Date().toISOString();
+      if (!role || !content) return null;
+      return { role, content: content.slice(0, 700), risk, time };
+    })
+    .filter((turn): turn is ChatTurn => Boolean(turn));
+}
+
+function trimMemory(turns: ChatTurn[]) {
+  return turns.slice(-10);
+}
 
 function hasCjk(text: string) {
   return /[\u3400-\u9fff]/.test(text);
@@ -132,8 +163,26 @@ export function LiveSafetyDemo() {
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [photoName, setPhotoName] = useState<string | null>(null);
   const [photoProcessing, setPhotoProcessing] = useState(false);
+  const [memoryTurns, setMemoryTurns] = useState<ChatTurn[]>([]);
+  const [memoryReady, setMemoryReady] = useState(false);
   const recognitionRef = useRef<any>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(MEMORY_STORAGE_KEY);
+      if (saved) setMemoryTurns(normalizeSavedMemory(JSON.parse(saved)));
+    } catch {
+      setMemoryTurns([]);
+    } finally {
+      setMemoryReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!memoryReady) return;
+    window.localStorage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(trimMemory(memoryTurns)));
+  }, [memoryReady, memoryTurns]);
 
   useEffect(() => {
     return () => {
@@ -154,6 +203,7 @@ export function LiveSafetyDemo() {
     setError(null);
 
     try {
+      const history = memoryTurns.slice(-8).map(({ role, content, risk }) => ({ role, content, risk }));
       const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -161,11 +211,30 @@ export function LiveSafetyDemo() {
           question: trimmed,
           language: nextLanguage,
           imageDataUrl: photoDataUrl,
+          history,
         }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Herald could not answer.");
       setResult(payload);
+      const time = new Date().toISOString();
+      setMemoryTurns((turns) =>
+        trimMemory([
+          ...turns,
+          {
+            role: "worker",
+            content: trimmed || "[site photo attached]",
+            time,
+          },
+          {
+            role: "herald",
+            content: payload.answer,
+            risk: payload.risk,
+            time,
+          },
+        ]),
+      );
+      setQuestion("");
       if (voiceReply) speak(payload.answer, payload.language === "yue" ? "yue" : nextLanguage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Herald could not answer.");
@@ -251,6 +320,11 @@ export function LiveSafetyDemo() {
     setPhotoName(null);
     setPhotoProcessing(false);
     if (photoInputRef.current) photoInputRef.current.value = "";
+  }
+
+  function clearMemory() {
+    setMemoryTurns([]);
+    window.localStorage.removeItem(MEMORY_STORAGE_KEY);
   }
 
   const risk = result?.risk;
@@ -457,6 +531,34 @@ export function LiveSafetyDemo() {
           </div>
 
           <div className="mt-3 grid gap-3">
+            <InfoCard icon={<RefreshCcw className="h-4 w-4 text-[var(--gold)]" />} title="Session memory">
+              <div className="space-y-2">
+                {memoryTurns.length ? (
+                  memoryTurns.slice(-6).map((turn, index) => (
+                    <div key={`${turn.time}-${index}`} className="grid gap-1 rounded-xl bg-[var(--muted)]/50 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        <span>{turn.role === "worker" ? "Worker" : "Herald"}</span>
+                        {turn.risk && <span className="text-foreground">{turn.risk}</span>}
+                      </div>
+                      <p className="line-clamp-2 text-[12.5px] leading-relaxed text-foreground/80">{turn.content}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[13px] text-muted-foreground">No follow-up context yet.</p>
+                )}
+                {memoryTurns.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearMemory}
+                    className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--panel)] px-3 text-[12px] font-medium text-foreground"
+                  >
+                    <RefreshCcw className="h-3.5 w-3.5" />
+                    Reset
+                  </button>
+                )}
+              </div>
+            </InfoCard>
+
             <InfoCard icon={<ClipboardList className="h-4 w-4 text-[var(--gold)]" />} title="Next steps">
               <ol className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
                 {(result?.steps ?? [

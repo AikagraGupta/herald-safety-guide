@@ -187,7 +187,7 @@ export function LiveSafetyDemo() {
   const risk = result?.risk;
   const RiskIcon = risk ? riskIcon[risk] : ShieldCheck;
   const sourceMode =
-    result?.mode === "beever-atlas" ? "Beever Atlas deep reasoning" : "Local safety reasoning";
+    result?.mode === "beever-atlas" ? "Beever Atlas deep reasoning" : "Votee LLM required";
 
   return (
     <section id="live-demo" className="flex flex-1 flex-col gap-3 pb-4">
@@ -361,7 +361,7 @@ export function LiveSafetyDemo() {
               <ol className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
                 {(result?.reasoning ?? [
                   "Herald checks role, task, hazard signals, and missing context before answering.",
-                  "Beever Atlas deep reasoning is used when MCP credentials are configured.",
+                  "Beever Atlas deep reasoning generates the safety decision when MCP credentials are configured.",
                 ])
                   .slice(0, 3)
                   .map((step) => (
@@ -376,8 +376,8 @@ export function LiveSafetyDemo() {
               <ol className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
                 {(result?.steps ?? [
                   "Describe the task, location, and visible hazard.",
-                  "Herald checks the safety source pack.",
-                  "If context is missing, Herald asks before deciding.",
+                  "Herald sends the question to Votee/Beever Atlas deep reasoning.",
+                  "If context is missing, the model should ask before deciding.",
                 ]).map((step) => (
                   <li key={step}>{step}</li>
                 ))}
@@ -393,9 +393,9 @@ export function LiveSafetyDemo() {
             <InfoCard icon={<ShieldCheck className="h-4 w-4 text-foreground/70" />} title="Decision rationale">
               <ol className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
                 {(result?.reasoning ?? [
-                  "Herald detects role, task, hazard, and missing context.",
-                  "Live Beever Atlas deep reasoning is used when MCP env vars are configured.",
-                  "Fallback routing keeps the demo reliable without external credentials.",
+                  "Herald sends the worker question to Beever Atlas ask_channel(mode=deep).",
+                  "The model returns STOP, CHECK, OK, or ASK with reasoning and citations.",
+                  "No predefined local answers are used when Votee is unavailable.",
                 ]).map((step) => (
                   <li key={step}>{step}</li>
                 ))}

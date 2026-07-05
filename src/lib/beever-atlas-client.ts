@@ -59,6 +59,10 @@ function getAtlasConfig(): AtlasConfig | null {
   };
 }
 
+export function isBeeverAtlasConfigured() {
+  return Boolean(getAtlasConfig());
+}
+
 async function mcpRequest<T>(
   config: AtlasConfig,
   method: string,

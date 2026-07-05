@@ -1,463 +1,209 @@
-import { askBeeverAtlas } from "./beever-atlas-client";
+import { askBeeverAtlas, isBeeverAtlasConfigured } from "./beever-atlas-client";
 
 type LanguageMode = "yue" | "en";
 type Risk = "STOP" | "CHECK" | "OK" | "ASK";
 
-type Rule = {
-  id: string;
-  risk: Exclude<Risk, "ASK">;
-  keywords: string[];
-  requires?: string[][];
-  en: { answer: string; steps: string[] };
-  yue: { answer: string; steps: string[] };
-  citations: Array<{ title: string; source: string; excerpt: string }>;
+type Citation = {
+  title: string;
+  source: string;
+  excerpt: string;
 };
 
-type DecisionAnalysis = {
-  workerRole: string;
-  hazardId: string;
-  matchedSignals: string[];
-  missingContext: string[];
-  rationale: string[];
+type LlmSafetyDecision = {
+  risk: Risk;
+  answer: string;
+  steps: string[];
+  reasoning: string[];
+  supervisor: {
+    status: string;
+    message: string;
+  };
+  citations: Citation[];
 };
 
-const rules: Rule[] = [
+const sourcePack = [
   {
-    id: "firefighter-low-air-smoke-entry",
-    risk: "STOP",
-    keywords: ["firefighter", "scba", "low air", "air alarm", "smoky room", "smoke-filled", "mayday", "煙", "空氣樽", "呼吸器", "低氣壓"],
-    en: {
-      answer:
-        "Stop advancing. A low-air alarm or SCBA concern in smoke is an immediate withdrawal and crew-accountability situation, not a push-forward moment.",
-      steps: [
-        "Tell your partner and officer immediately.",
-        "Begin controlled withdrawal while maintaining crew contact.",
-        "Call Mayday or emergency traffic if you are disoriented, trapped, separated, or cannot exit safely.",
-      ],
-    },
-    yue: {
-      answer: "停低，唔好再推前。煙入面呼吸器低氣壓或有問題，要即刻撤出並做隊員點名，唔係繼續入去。",
-      steps: ["即刻通知拍檔同指揮／隊長。", "保持隊員接觸，有控制咁撤出。", "如果迷路、被困、失散或出唔到，要即刻發出緊急求救。"],
-    },
-    citations: [
-      {
-        title: "Votee Safety Atlas",
-        source: "Firefighter respiratory protection",
-        excerpt: "Low-air and SCBA warnings require immediate crew communication, withdrawal, and emergency escalation if exit is compromised.",
-      },
-    ],
+    id: "fire-protection-controls",
+    title: "Site Fire Safety SOP",
+    content:
+      "Fire detection, warning, and evacuation systems must remain available unless a documented temporary impairment procedure is active. Workers must not disable alarms without supervisor approval, temporary controls, and a compliance log.",
   },
   {
-    id: "wet-electrical-panel",
-    risk: "STOP",
-    keywords: ["water", "wet floor", "spill", "electrical panel", "electric panel", "panel", "breaker", "水", "水漬", "濕", "電箱", "電掣"],
-    requires: [
-      ["water", "wet floor", "spill", "水", "水漬", "濕"],
-      ["electrical panel", "electric panel", "panel", "breaker", "電箱", "電掣"],
-    ],
-    en: {
-      answer:
-        "Stop. Water near an electrical panel is a combined slip and electrocution hazard. Do not open the panel until the area is isolated, dried, and the electrical source is made safe by an authorized person.",
-      steps: [
-        "Keep people away from the wet area and the panel.",
-        "Do not touch or open the panel while standing near water.",
-        "Call an authorized electrical/safety lead to isolate power, dry the area, and verify it is safe.",
-      ],
-    },
-    yue: {
-      answer: "停低。電箱附近有水係跣倒同觸電嘅複合風險。未隔離、抹乾同由合資格人員確認安全之前，唔好開電箱。",
-      steps: ["先阻止其他人接近水漬同電箱。", "企喺水附近時唔好掂或打開電箱。", "搵合資格電工／安全負責人隔離電源、抹乾範圍並確認安全。"],
-    },
-    citations: [
-      {
-        title: "Votee Safety Atlas",
-        source: "Wet electrical hazard",
-        excerpt: "Water and electrical equipment require isolation, area control, and authorized verification before work continues.",
-      },
-      {
-        title: "Votee Safety Atlas",
-        source: "Housekeeping and access",
-        excerpt: "Wet access routes must be marked or isolated before workers continue through the area.",
-      },
-    ],
+    id: "high-risk-escalation",
+    title: "Supervisor Escalation Rule",
+    content:
+      "Workers must escalate any request to bypass a safety system. The app should log the worker question, decision, citation, responsible supervisor, and final action.",
   },
   {
-    id: "fire-alarm-disable",
-    risk: "STOP",
-    keywords: ["fire alarm", "alarm", "disable", "silence", "smoke", "sprinkler", "火警", "警報", "關閉", "熄"],
-    en: {
-      answer:
-        "Stop. Do not disable a fire alarm or life-safety system unless a competent supervisor has issued a controlled permit and temporary protection is active.",
-      steps: [
-        "Pause the task and keep the alarm active.",
-        "Tell the site supervisor or fire safety lead now.",
-        "If work must continue, wait for a documented isolation permit and fire watch.",
-      ],
-    },
-    yue: {
-      answer: "停一停。唔好自行關閉火警警報或生命安全系統，除非主管已批出受控許可，並有臨時保護措施。",
-      steps: ["先停工，保持警報運作。", "即刻通知地盤主管或消防安全負責人。", "如一定要繼續，等書面隔離許可同火警監察安排。"],
-    },
-    citations: [
-      {
-        title: "Votee Safety Atlas",
-        source: "Fire protection controls",
-        excerpt: "Life-safety alarms require supervisor-controlled isolation and temporary protection.",
-      },
-      {
-        title: "Site Safety Playbook",
-        source: "Emergency systems",
-        excerpt: "Workers should escalate before bypassing alarms, sprinklers, or detection systems.",
-      },
-    ],
+    id: "electrical-isolation",
+    title: "Electrical Isolation SOP",
+    content:
+      "Electrical work begins only after isolation, lockout/tagout, and testing by a competent person. Treat equipment as live until proven otherwise.",
   },
   {
-    id: "live-electrical-work",
-    risk: "STOP",
-    keywords: ["live wire", "electric", "electrical", "voltage", "breaker", "socket", "cable", "帶電", "電線", "漏電", "電掣", "電箱", "插座"],
-    en: {
-      answer: "Stop. Treat the circuit as live until it is isolated, locked out, tagged, and tested by an authorized person.",
-      steps: [
-        "Move hands and tools away from the circuit.",
-        "Ask an authorized person to isolate and lock out the supply.",
-        "Resume only after test-before-touch confirmation.",
-      ],
-    },
-    yue: {
-      answer: "停工。當條線仍然帶電處理，直到合資格人員完成隔離、上鎖、掛牌同測試。",
-      steps: ["手同工具離開電路。", "搵合資格人員隔離電源並上鎖掛牌。", "確認先測試、後接觸之後先可以繼續。"],
-    },
-    citations: [
-      {
-        title: "Votee Safety Atlas",
-        source: "Electrical isolation",
-        excerpt: "Live electrical work needs lockout, tagout, and verification before contact.",
-      },
-    ],
-  },
-  {
-    id: "height-scaffold-control",
-    risk: "CHECK",
-    keywords: ["height", "ladder", "scaffold", "harness", "edge", "roof", "lift", "棚", "棚架", "高空", "梯", "安全帶", "天台"],
-    en: {
-      answer: "Check before starting. Work at height needs a stable platform, edge protection, and fall protection where required.",
-      steps: [
-        "Inspect the scaffold, ladder, or platform before climbing.",
-        "Confirm guardrails, toe boards, and access are secure.",
-        "Use fall protection if there is an exposed edge or incomplete platform.",
-      ],
-    },
-    yue: {
-      answer: "開工前要檢查。高空工作要有穩固工作台、邊緣保護，按需要使用防墮設備。",
-      steps: ["上去前檢查棚架、梯或工作台。", "確認扶手、踢腳板同通道穩陣。", "如有開邊或未完成平台，要用防墮設備。"],
-    },
-    citations: [
-      {
-        title: "Votee Safety Atlas",
-        source: "Work at height",
-        excerpt: "Falls are controlled through planning, inspected access, and fall prevention.",
-      },
-    ],
-  },
-  {
-    id: "confined-space-entry",
-    risk: "STOP",
-    keywords: ["confined", "manhole", "tank", "oxygen", "gas test", "drain", "sewer", "密閉", "沙井", "渠", "缺氧", "氣體"],
-    en: {
-      answer: "Stop. Confined space entry needs a permit, atmospheric testing, ventilation, standby support, and rescue arrangements.",
-      steps: [
-        "Do not enter until the permit is active.",
-        "Confirm gas testing and ventilation are complete.",
-        "Make sure a standby person and rescue plan are in place.",
-      ],
-    },
-    yue: {
-      answer: "停工。入密閉空間前要有許可、氣體測試、通風、看守人同救援安排。",
-      steps: ["許可未生效就唔好入。", "確認已做氣體測試同通風。", "確保有人看守，並有救援計劃。"],
-    },
-    citations: [
-      {
-        title: "Votee Safety Atlas",
-        source: "Confined space entry",
-        excerpt: "Entry requires permits, atmospheric controls, attendants, and emergency planning.",
-      },
-    ],
+    id: "work-at-height",
+    title: "Work-at-Height Checklist",
+    content:
+      "Work at height requires suitable access, fall prevention controls, stable footing, inspected equipment, and supervisor review when conditions change.",
   },
   {
     id: "hot-work-permit",
-    risk: "CHECK",
-    keywords: ["weld", "grind", "spark", "hot work", "torch", "cutting", "燒焊", "打磨", "火花", "熱工序", "切割"],
-    en: {
-      answer: "Check the permit. Hot work should start only after combustibles are cleared, extinguishers are ready, and fire watch is assigned.",
-      steps: [
-        "Confirm the hot-work permit covers this area and time.",
-        "Clear or cover combustible materials.",
-        "Keep extinguishers nearby and assign fire watch after the task.",
-      ],
-    },
-    yue: {
-      answer: "先查許可。熱工序要清走易燃物、準備滅火器，並安排火警監察。",
-      steps: ["確認熱工序許可包括呢個位置同時間。", "清走或遮蓋易燃物料。", "滅火器放近身，完工後安排火警監察。"],
-    },
-    citations: [
-      {
-        title: "Votee Safety Atlas",
-        source: "Hot work controls",
-        excerpt: "Hot work permits help control ignition sources and post-work fire risk.",
-      },
-    ],
-  },
-  {
-    id: "slip-trip-condition",
-    risk: "CHECK",
-    keywords: ["slip", "trip", "wet floor", "water", "wet", "puddle", "spill", "blocked", "obstruction", "leak", "滑", "跣", "水", "水漬", "濕", "漏水", "阻住", "絆倒"],
-    en: {
-      answer: "Check and control the area first. Do not just walk through a slip, trip, or blocked-access hazard.",
-      steps: [
-        "Stop people entering the affected area.",
-        "Mark or isolate the hazard with cones, tape, or a spotter.",
-        "Clean, dry, or clear the path before work continues.",
-      ],
-    },
-    yue: {
-      answer: "先檢查同控制範圍。見到跣腳、絆倒或通道阻塞風險，唔好照行照做。",
-      steps: ["先阻止其他人入受影響範圍。", "用雪糕筒、警示帶或安排人手睇住。", "清理、抹乾或移走阻塞物之後先繼續。"],
-    },
-    citations: [
-      {
-        title: "Votee Safety Atlas",
-        source: "Housekeeping and access",
-        excerpt: "Access routes should be kept clear, dry, marked, and controlled before work continues.",
-      },
-    ],
+    title: "Hot Work Permit SOP",
+    content:
+      "Hot work requires permit approval, combustible control, extinguishing equipment, and a fire watch before work starts.",
   },
 ];
-
-const okCopy = {
-  en: {
-    answer: "This sounds manageable, but only proceed if the briefing, PPE, and supervisor instructions match the site condition.",
-    steps: [
-      "Confirm the method statement or task briefing matches what you see.",
-      "Wear the required PPE for the area.",
-      "Stop and ask again if the condition changes or feels unsafe.",
-    ],
-  },
-  yue: {
-    answer: "聽落可以處理，但只有喺工作簡報、個人防護裝備同主管指示都同現場情況一致時先好繼續。",
-    steps: ["確認施工方案或工作簡報同現場一致。", "穿戴該區域要求嘅個人防護裝備。", "如果情況有變或者覺得唔安全，要停低再問。"],
-  },
-};
-
-const contextWords = {
-  en: [
-    "work",
-    "use",
-    "move",
-    "lift",
-    "carry",
-    "cut",
-    "enter",
-    "open",
-    "repair",
-    "install",
-    "site",
-    "floor",
-    "room",
-    "roof",
-    "near",
-    "inside",
-    "outside",
-    "unsafe",
-    "danger",
-    "broken",
-    "loose",
-    "leak",
-    "smell",
-    "noise",
-  ],
-  yue: ["做", "搬", "拎", "入", "開", "整", "裝", "上", "落", "地盤", "房", "樓", "天台", "附近", "入面", "出面", "危險", "爛", "鬆", "漏", "味", "聲"],
-};
 
 function hasCjk(text: string) {
   return /[\u3400-\u9fff]/.test(text);
 }
 
-function chooseRule(question: string) {
-  const normalized = question.toLowerCase();
-  return (
-    rules.find((rule) => {
-      if (rule.requires) {
-        return rule.requires.every((group) => group.some((keyword) => normalized.includes(keyword.toLowerCase())));
-      }
-
-      return rule.keywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
-    }) ?? null
-  );
-}
-
-function matchingSignals(question: string, rule: Rule | null) {
-  if (!rule) return [];
-  const normalized = question.toLowerCase();
-  return rule.keywords.filter((keyword) => normalized.includes(keyword.toLowerCase())).slice(0, 5);
-}
-
-function detectWorkerRole(question: string) {
-  const normalized = question.toLowerCase();
-  const roleSignals: Array<[string, string[]]> = [
-    ["Firefighter / emergency response", ["firefighter", "scba", "mayday", "smoky", "smoke-filled", "hose", "rescue", "呼吸器", "煙"]],
-    ["EMT / medical responder", ["emt", "paramedic", "ambulance", "patient", "blood", "sharps", "needle", "biohazard"]],
-    ["Utility / field technician", ["utility", "gas leak", "meter", "transformer", "power line", "breaker", "cable", "電線", "電箱"]],
-    ["Warehouse / logistics worker", ["warehouse", "forklift", "pallet", "loading dock", "rack", "cart", "推車"]],
-    ["Maintenance / facilities worker", ["maintenance", "repair", "install", "equipment", "plant room", "機房", "維修"]],
-    ["Construction / site worker", ["site", "scaffold", "ladder", "roof", "hot work", "地盤", "棚架", "高空"]],
-  ];
-
-  return roleSignals.find(([, signals]) => signals.some((signal) => normalized.includes(signal.toLowerCase())))?.[0] ?? "Physical worker";
-}
-
-function missingContext(question: string, language: LanguageMode, photoAttached = false) {
-  const normalized = question.toLowerCase();
-  const checks = [
-    {
-      label: "location",
-      signals:
-        language === "yue"
-          ? ["樓", "房", "天台", "地盤", "走廊", "附近", "入面", "出面", "沙井"]
-          : ["floor", "room", "roof", "site", "corridor", "near", "inside", "outside", "manhole", "area"],
-    },
-    {
-      label: "task/action",
-      signals:
-        language === "yue"
-          ? ["做", "搬", "入", "開", "整", "裝", "上", "落", "推", "繼續"]
-          : ["work", "move", "enter", "open", "repair", "install", "lift", "carry", "push", "continue"],
-    },
-    {
-      label: "visible hazard",
-      signals:
-        language === "yue"
-          ? ["水", "電", "煙", "火", "氣", "漏", "鬆", "爛", "滑", "味", "聲"]
-          : ["water", "electric", "smoke", "fire", "gas", "leak", "loose", "broken", "slip", "smell", "noise"],
-    },
-  ];
-
-  const missing = checks.filter((check) => !check.signals.some((signal) => normalized.includes(signal.toLowerCase()))).map((check) => check.label);
-  return photoAttached ? missing.filter((item) => item !== "visible hazard") : missing;
-}
-
-function buildReasoning(input: {
-  question: string;
-  language: LanguageMode;
-  rule: Rule | null;
-  risk: Risk;
-  photoAttached?: boolean;
-  atlasUsed?: boolean;
-}) {
-  const matchedSignals = matchingSignals(input.question, input.rule);
-  const gaps = missingContext(input.question, input.language, input.photoAttached);
-  const analysis: DecisionAnalysis = {
-    workerRole: detectWorkerRole(input.question),
-    hazardId: input.rule?.id ?? (input.risk === "ASK" ? "needs-more-context" : "general-task-readiness"),
-    matchedSignals,
-    missingContext: gaps,
-    rationale: [],
-  };
-
-  analysis.rationale.push(`Role signal: ${analysis.workerRole}.`);
-  analysis.rationale.push(
-    input.rule
-      ? `Hazard matched: ${analysis.hazardId}${matchedSignals.length ? ` via ${matchedSignals.join(", ")}` : ""}.`
-      : "No specific high-risk rule matched; using context sufficiency and general readiness checks.",
-  );
-  analysis.rationale.push(
-    gaps.length ? `Missing context: ${gaps.join(", ")}.` : "Context check: location/task/hazard signals are sufficient for a first-pass decision.",
-  );
-  analysis.rationale.push(
-    input.risk === "ASK"
-      ? "Decision: ASK because Herald should not invent a safety answer without enough site detail."
-      : `Decision: ${input.risk} based on the matched hazard severity and physical-worker safety policy.`,
-  );
-  analysis.rationale.push(
-    input.atlasUsed
-      ? "Reasoning source: Beever Atlas MCP ask_channel(mode=deep) supplied the cited answer."
-      : "Reasoning source: local Votee safety source pack fallback; add Beever MCP env vars for live Atlas reasoning.",
-  );
-
-  return analysis;
-}
-
-function isContextEnough(question: string, language: LanguageMode, photoAttached = false) {
-  const normalized = question.toLowerCase();
-  const words = normalized.split(/\s+/).filter(Boolean);
-  const enoughLength = hasCjk(question) ? question.replace(/\s/g, "").length >= 12 : words.length >= 6;
-  const hasSignal = contextWords[language].some((word) => normalized.includes(word.toLowerCase()));
-  const asksAboutAction = /[?？]|can i|should i|is it safe|可唔可以|可不可以|應唔應該|得唔得/.test(normalized);
-
-  return photoAttached || (enoughLength && (hasSignal || asksAboutAction));
-}
-
-function contextResponse(question: string, language: LanguageMode, startedAt: number) {
-  const isYue = language === "yue";
-  const reasoning = buildReasoning({ question, language, rule: null, risk: "ASK" });
-
-  return Response.json(
-    {
-      mode: "votee-source-pack",
-      risk: "ASK",
-      answer: isYue
-        ? "我未有足夠現場資料，唔應該亂俾安全判斷。講多兩三句：你喺邊度、做緊咩、見到咩危險？"
-        : "I need more site context before giving a safety decision. Tell me where you are, what task you are doing, and what looks unsafe.",
-      language,
-      steps: isYue
-        ? ["講位置：例如樓層、房間、天台、沙井或設備旁邊。", "講動作：你準備做咩或想唔想繼續。", "講危險：見到水、電、煙、鬆脫、氣味、火花或其他異常。"]
-        : ["Add the location: floor, room, roof, manhole, or equipment area.", "Add the action: what you are about to do or whether you want to continue.", "Add the hazard: water, electricity, smoke, loose parts, smell, sparks, or anything unusual."],
-      citations: [],
-      reasoning: reasoning.rationale,
-      supervisor: {
-        status: "Not sent",
-        message: isYue ? "未夠資料，暫時唔通知主管；補充現場資料後再判斷。" : "Not enough context to notify a supervisor yet; add site details first.",
-      },
-      logs: [
-        {
-          id: `LOG-${startedAt}`,
-          time: new Date(startedAt).toISOString(),
-          question,
-          risk: "ASK",
-          ruleId: "needs-more-context",
-        },
-      ],
-      latencyMs: Math.max(45, Date.now() - startedAt),
-    },
-    {
-      headers: {
-        "Cache-Control": "no-store",
-      },
-    },
-  );
-}
-
-function atlasPrompt(question: string, language: LanguageMode, risk: Exclude<Risk, "ASK">) {
+function buildVoteeReasoningPrompt(question: string, language: LanguageMode, photoAttached: boolean) {
   const outputLanguage = language === "yue" ? "Cantonese, Hong Kong style" : "English";
+  const photoContext = photoAttached
+    ? "The worker attached a site photo, but the backend only receives a photo marker. Ask for visible details if the image content is necessary."
+    : "No photo was attached.";
 
   return [
-    "You are Herald, an AI safety guide for all physical workers: firefighters, EMTs, utility crews, warehouse teams, maintenance workers, construction crews, and field operators.",
-    "Use Beever Atlas channel knowledge to give a cited, practical safety answer. If the channel does not contain enough domain evidence, say what source context is missing.",
-    `Return the answer in ${outputLanguage}.`,
-    `The app's risk router classified this as ${risk}. Do not downgrade a STOP or CHECK classification.`,
-    "Keep it short enough to read on a phone. Include concrete next actions.",
+    "You are Herald, an AI safety copilot for physical workers: firefighters, EMTs, utility crews, warehouse teams, maintenance workers, construction crews, facilities staff, and field operators.",
+    "Reason from the worker's natural-language question and the safety source pack. Do not choose from canned examples. Do not copy a predefined answer. Make a fresh decision for this exact situation.",
+    "Use deep reasoning across the available context. If the worker gives too little context, choose ASK and ask for the missing details instead of guessing.",
+    "Classify the decision as one of:",
+    "- STOP: immediate serious harm, unsafe bypass, energy isolation, emergency, confined space, fire/smoke, live electrical, fall, unknown high-risk condition.",
+    "- CHECK: potentially manageable only after verification, permit, PPE, supervisor, area control, or source-pack confirmation.",
+    "- OK: ordinary low-risk task where the worker can proceed only if normal controls match the site.",
+    "- ASK: insufficient location/task/hazard detail to make a safe call.",
+    `Return the worker-facing content in ${outputLanguage}. Keep it concise enough for a phone screen.`,
+    photoContext,
+    "Return ONLY valid JSON. Do not wrap it in markdown. The JSON schema is:",
+    JSON.stringify(
+      {
+        risk: "STOP | CHECK | OK | ASK",
+        answer: "one direct worker-facing answer",
+        steps: ["concrete next action 1", "concrete next action 2", "concrete next action 3"],
+        reasoning: [
+          "short rationale item about what was understood",
+          "short rationale item about missing/sufficient context",
+          "short rationale item about why the risk classification was chosen",
+        ],
+        supervisor: {
+          status: "Required | Recommended | Optional | Not sent",
+          message: "short supervisor/escalation message",
+        },
+        citations: [
+          {
+            title: "source title",
+            source: "source id or Beever Atlas citation",
+            excerpt: "short supporting excerpt",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    "Safety source pack available to the model:",
+    JSON.stringify(sourcePack, null, 2),
     `Worker question: ${question}`,
-  ].join("\n");
+  ].join("\n\n");
 }
 
-async function getAtlasAnswer(question: string, language: LanguageMode, risk: Exclude<Risk, "ASK">) {
+function extractJson(text: string) {
+  const withoutFence = text
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  const start = withoutFence.indexOf("{");
+  const end = withoutFence.lastIndexOf("}");
+
+  if (start === -1 || end === -1 || end <= start) return null;
+  return withoutFence.slice(start, end + 1);
+}
+
+function asStringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item).trim()).filter(Boolean).slice(0, 5);
+}
+
+function normalizeRisk(value: unknown): Risk | null {
+  const risk = String(value ?? "").toUpperCase();
+  if (risk === "STOP" || risk === "CHECK" || risk === "OK" || risk === "ASK") return risk;
+  return null;
+}
+
+function normalizeCitations(value: unknown, atlasCitations: Citation[]) {
+  const parsed = Array.isArray(value)
+    ? value
+        .map((item, index) => {
+          const citation = (item ?? {}) as Record<string, unknown>;
+          return {
+            title: String(citation.title ?? `Votee reasoning citation ${index + 1}`),
+            source: String(citation.source ?? "Beever Atlas"),
+            excerpt: String(citation.excerpt ?? ""),
+          };
+        })
+        .filter((item) => item.title || item.excerpt)
+        .slice(0, 4)
+    : [];
+
+  if (parsed.length) return parsed;
+  if (atlasCitations.length) return atlasCitations.slice(0, 4);
+
+  return [
+    {
+      title: "Votee Beever Atlas",
+      source: "ask_channel(mode=deep)",
+      excerpt: "Decision generated by live Beever Atlas reasoning from the worker question and safety source context.",
+    },
+  ];
+}
+
+function parseLlmDecision(answer: string, atlasCitations: Citation[]): LlmSafetyDecision | null {
+  const json = extractJson(answer);
+  if (!json) return null;
+
   try {
-    const atlas = await askBeeverAtlas(atlasPrompt(question, language, risk));
-    if (!atlas?.answer?.trim()) return null;
-    return atlas;
-  } catch (error) {
-    console.warn("Beever Atlas unavailable; using local safety source pack.", error);
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    const risk = normalizeRisk(parsed.risk);
+    const workerAnswer = String(parsed.answer ?? "").trim();
+    if (!risk || !workerAnswer) return null;
+
+    const supervisor = (parsed.supervisor ?? {}) as Record<string, unknown>;
+
+    return {
+      risk,
+      answer: workerAnswer,
+      steps: asStringArray(parsed.steps),
+      reasoning: asStringArray(parsed.reasoning),
+      supervisor: {
+        status: String(supervisor.status ?? (risk === "STOP" ? "Required" : risk === "CHECK" ? "Recommended" : "Optional")),
+        message: String(supervisor.message ?? "Supervisor review depends on the model decision."),
+      },
+      citations: normalizeCitations(parsed.citations, atlasCitations),
+    };
+  } catch {
     return null;
   }
+}
+
+async function getVoteeDecision(question: string, language: LanguageMode, photoAttached: boolean) {
+  const atlas = await askBeeverAtlas(buildVoteeReasoningPrompt(question, language, photoAttached));
+  if (!atlas?.answer?.trim()) return null;
+
+  const parsed = parseLlmDecision(atlas.answer, atlas.citations);
+  if (!parsed) {
+    throw new Error("Votee returned an answer, but not the structured reasoning JSON Herald needs.");
+  }
+
+  if (!parsed.steps.length) {
+    parsed.steps = ["Pause and confirm the site condition.", "Escalate to a competent supervisor if risk is unclear."];
+  }
+
+  if (!parsed.reasoning.length) {
+    parsed.reasoning = ["Votee Beever Atlas generated this decision from the worker question and safety source context."];
+  }
+
+  return parsed;
 }
 
 export async function handleSafetyAsk(request: Request) {
@@ -478,68 +224,59 @@ export async function handleSafetyAsk(request: Request) {
     return Response.json({ error: "Ask a safety question first." }, { status: 400 });
   }
 
-  const startedAt = Date.now();
-  const language: LanguageMode = body.language === "en" && !hasCjk(question) ? "en" : "yue";
-  const rule = chooseRule(question);
-
-  if (!rule && !isContextEnough(question, language, body.photoAttached)) {
-    return contextResponse(question, language, startedAt);
+  if (!isBeeverAtlasConfigured()) {
+    return Response.json(
+      {
+        error:
+          "Live Votee/Beever LLM reasoning is not configured. Add BEEVER_MCP_KEY plus BEEVER_MCP_URL and BEEVER_CHANNEL_ID or BEEVER_CHANNEL_NAME in Vercel. This build no longer uses predefined local answers.",
+      },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
   }
 
-  const copy = rule ? rule[language] : okCopy[language];
-  const risk = rule?.risk ?? "OK";
-  const atlas = await getAtlasAnswer(question, language, risk);
-  const reasoning = buildReasoning({
-    question,
-    language,
-    rule,
-    risk,
-    photoAttached: body.photoAttached,
-    atlasUsed: Boolean(atlas),
-  });
-  const riskLabel = risk === "OK" ? "READY" : risk;
-  const photoStep =
-    language === "yue"
-      ? "已收到相片標記；現場仍要由主管確認。"
-      : "Photo marker received; the site condition still needs supervisor confirmation.";
+  const startedAt = Date.now();
+  const language: LanguageMode = body.language === "en" && !hasCjk(question) ? "en" : "yue";
 
-  return Response.json(
-    {
-      mode: atlas ? "beever-atlas" : "votee-source-pack",
-      risk,
-      answer: atlas?.answer ?? copy.answer,
-      language,
-      steps: body.photoAttached ? [...copy.steps, photoStep] : copy.steps,
-      citations: atlas?.citations.length ? atlas.citations : rule?.citations ?? [
-        {
-          title: "Votee Safety Atlas",
-          source: "General task readiness",
-          excerpt: "Workers should verify task controls, PPE, and escalation routes before starting.",
-        },
-      ],
-      reasoning: reasoning.rationale,
-      supervisor: {
-        status: risk === "STOP" ? "Required" : risk === "CHECK" ? "Recommended" : "Optional",
-        message:
-          language === "yue"
-            ? `${riskLabel} 個案已準備好交俾主管覆核。`
-            : `${riskLabel} case is ready for supervisor review.`,
+  try {
+    const decision = await getVoteeDecision(question, language, Boolean(body.photoAttached));
+
+    return Response.json(
+      {
+        mode: "beever-atlas",
+        risk: decision.risk,
+        answer: decision.answer,
+        language,
+        steps: decision.steps,
+        citations: decision.citations,
+        reasoning: decision.reasoning,
+        supervisor: decision.supervisor,
+        logs: [
+          {
+            id: `LOG-${startedAt}`,
+            time: new Date(startedAt).toISOString(),
+            question,
+            risk: decision.risk,
+            ruleId: "votee-llm-reasoned",
+          },
+        ],
+        latencyMs: Math.max(45, Date.now() - startedAt),
       },
-      logs: [
-        {
-          id: `LOG-${startedAt}`,
-          time: new Date(startedAt).toISOString(),
-          question,
-          risk,
-          ruleId: rule?.id ?? "general-task-readiness",
+      {
+        headers: {
+          "Cache-Control": "no-store",
         },
-      ],
-      latencyMs: Math.max(45, Date.now() - startedAt),
-    },
-    {
-      headers: {
-        "Cache-Control": "no-store",
       },
-    },
-  );
+    );
+  } catch (error) {
+    console.error("Votee reasoning failed.", error);
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Votee/Beever reasoning failed. Try again after confirming the Atlas MCP server and channel are available.",
+      },
+      { status: 502, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 }

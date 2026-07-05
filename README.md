@@ -36,7 +36,7 @@ Configure the live reasoning model:
 
 ```powershell
 $env:GEMINI_API_KEY="your-google-ai-studio-api-key"
-$env:GEMINI_MODEL="gemini-3.5-flash"
+$env:GEMINI_MODEL="gemini-2.0-flash"
 npm run dev
 ```
 

@@ -65,53 +65,6 @@ const sourcePack = [
   },
 ];
 
-const safetyDecisionSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["risk", "answer", "steps", "reasoning", "supervisor", "citations", "observedText"],
-  properties: {
-    risk: { type: "string", enum: ["STOP", "CHECK", "OK", "ASK"] },
-    answer: { type: "string" },
-    steps: {
-      type: "array",
-      minItems: 2,
-      maxItems: 5,
-      items: { type: "string" },
-    },
-    reasoning: {
-      type: "array",
-      minItems: 2,
-      maxItems: 4,
-      items: { type: "string" },
-    },
-    supervisor: {
-      type: "object",
-      additionalProperties: false,
-      required: ["status", "message"],
-      properties: {
-        status: { type: "string", enum: ["Required", "Recommended", "Optional", "Not sent"] },
-        message: { type: "string" },
-      },
-    },
-    citations: {
-      type: "array",
-      minItems: 1,
-      maxItems: 4,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["title", "source", "excerpt"],
-        properties: {
-          title: { type: "string" },
-          source: { type: "string" },
-          excerpt: { type: "string" },
-        },
-      },
-    },
-    observedText: { type: "string" },
-  },
-};
-
 function hasCjk(text: string) {
   return /[\u3400-\u9fff]/.test(text);
 }
@@ -122,7 +75,7 @@ function getGeminiConfig() {
 
   return {
     apiKey,
-    model: process.env.GEMINI_MODEL ?? "gemini-3.5-flash",
+    model: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
   };
 }
 
@@ -141,6 +94,33 @@ function buildPrompt(question: string, language: LanguageMode, hasImage: boolean
     "- OK: ordinary low-risk task where normal controls clearly match the site.",
     "- ASK: insufficient location/task/hazard detail.",
     `Return worker-facing content in ${outputLanguage}. Keep it short enough for a phone screen.`,
+    "Return ONLY raw JSON, no markdown, with this exact shape:",
+    JSON.stringify(
+      {
+        risk: "STOP | CHECK | OK | ASK",
+        answer: "one direct worker-facing answer",
+        steps: ["concrete next action 1", "concrete next action 2", "concrete next action 3"],
+        reasoning: [
+          "short rationale item about what was understood",
+          "short rationale item about missing/sufficient context",
+          "short rationale item about why the risk classification was chosen",
+        ],
+        supervisor: {
+          status: "Required | Recommended | Optional | Not sent",
+          message: "short supervisor/escalation message",
+        },
+        citations: [
+          {
+            title: "Votee source title",
+            source: "Votee source id",
+            excerpt: "short supporting excerpt from the Votee source pack",
+          },
+        ],
+        observedText: "relevant OCR or visual observations from the image, or empty string",
+      },
+      null,
+      2,
+    ),
     hasImage ? "Image status: attached." : "Image status: none.",
     "Votee safety source pack:",
     JSON.stringify(sourcePack, null, 2),
@@ -180,6 +160,17 @@ function normalizeDecision(value: unknown): LlmSafetyDecision | null {
 function parseOutputText(payload: Record<string, unknown>) {
   if (typeof payload.output_text === "string") return payload.output_text;
 
+  const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+  for (const candidate of candidates) {
+    const content = (candidate as Record<string, unknown>).content as Record<string, unknown> | undefined;
+    const parts = Array.isArray(content?.parts) ? content.parts : [];
+    const text = parts
+      .map((part) => ((part as Record<string, unknown>).text ? String((part as Record<string, unknown>).text) : ""))
+      .join("")
+      .trim();
+    if (text) return text;
+  }
+
   const output = Array.isArray(payload.output) ? payload.output : [];
   for (const item of output) {
     const content = Array.isArray((item as Record<string, unknown>).content) ? ((item as Record<string, unknown>).content as unknown[]) : [];
@@ -208,35 +199,38 @@ async function askReasoningModel(question: string, language: LanguageMode, image
     throw new Error("GEMINI_API_KEY is missing. Add a Google AI Studio Gemini key in Vercel Environment Variables to enable LLM reasoning, OCR, Cantonese, and image understanding.");
   }
 
-  const content: Array<Record<string, unknown>> = [
+  const parts: Array<Record<string, unknown>> = [
     {
-      type: "text",
       text: buildPrompt(question, language, Boolean(imageDataUrl)),
     },
   ];
 
   if (imageDataUrl) {
     const image = parseImageDataUrl(imageDataUrl);
-    content.push({
-      type: "image",
-      data: image.data,
-      mime_type: image.mimeType,
+    parts.push({
+      inline_data: {
+        mime_type: image.mimeType,
+        data: image.data,
+      },
     });
   }
 
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, {
     method: "POST",
     headers: {
-      "x-goog-api-key": config.apiKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: config.model,
-      input: content,
-      response_format: {
-        type: "text",
-        mime_type: "application/json",
-        schema: safetyDecisionSchema,
+      contents: [
+        {
+          role: "user",
+          parts,
+        },
+      ],
+      generationConfig: {
+        response_mime_type: "application/json",
+        temperature: 0.2,
+        max_output_tokens: 900,
       },
     }),
   });

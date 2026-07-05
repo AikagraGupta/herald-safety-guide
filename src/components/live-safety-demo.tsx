@@ -42,6 +42,7 @@ type AskResult = {
   language?: "yue" | "en";
   steps: string[];
   citations: Citation[];
+  reasoning?: string[];
   supervisor: Supervisor;
   logs: LogEntry[];
   latencyMs: number;
@@ -370,6 +371,18 @@ export function LiveSafetyDemo() {
               <p className="text-[13px] leading-relaxed text-muted-foreground">
                 {result?.supervisor?.message ?? "High-risk answers will notify the responsible supervisor."}
               </p>
+            </InfoCard>
+
+            <InfoCard icon={<ShieldCheck className="h-4 w-4 text-foreground/70" />} title="Decision rationale">
+              <ol className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
+                {(result?.reasoning ?? [
+                  "Herald detects role, task, hazard, and missing context.",
+                  "Live Beever Atlas deep reasoning is used when MCP env vars are configured.",
+                  "Fallback routing keeps the demo reliable without external credentials.",
+                ]).map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
             </InfoCard>
 
             <InfoCard icon={<BookOpenCheck className="h-4 w-4 text-[var(--gold)]" />} title="Source citations">

@@ -12,6 +12,14 @@ type Rule = {
   citations: Array<{ title: string; source: string; excerpt: string }>;
 };
 
+type DecisionAnalysis = {
+  workerRole: string;
+  hazardId: string;
+  matchedSignals: string[];
+  missingContext: string[];
+  rationale: string[];
+};
+
 const rules: Rule[] = [
   {
     id: "firefighter-low-air-smoke-entry",
@@ -244,6 +252,97 @@ function chooseRule(question: string) {
   return rules.find((rule) => rule.keywords.some((keyword) => normalized.includes(keyword.toLowerCase()))) ?? null;
 }
 
+function matchingSignals(question: string, rule: Rule | null) {
+  if (!rule) return [];
+  const normalized = question.toLowerCase();
+  return rule.keywords.filter((keyword) => normalized.includes(keyword.toLowerCase())).slice(0, 5);
+}
+
+function detectWorkerRole(question: string) {
+  const normalized = question.toLowerCase();
+  const roleSignals: Array<[string, string[]]> = [
+    ["Firefighter / emergency response", ["firefighter", "scba", "mayday", "smoky", "smoke-filled", "hose", "rescue", "呼吸器", "煙"]],
+    ["EMT / medical responder", ["emt", "paramedic", "ambulance", "patient", "blood", "sharps", "needle", "biohazard"]],
+    ["Utility / field technician", ["utility", "gas leak", "meter", "transformer", "power line", "breaker", "cable", "電線", "電箱"]],
+    ["Warehouse / logistics worker", ["warehouse", "forklift", "pallet", "loading dock", "rack", "cart", "推車"]],
+    ["Maintenance / facilities worker", ["maintenance", "repair", "install", "equipment", "plant room", "機房", "維修"]],
+    ["Construction / site worker", ["site", "scaffold", "ladder", "roof", "hot work", "地盤", "棚架", "高空"]],
+  ];
+
+  return roleSignals.find(([, signals]) => signals.some((signal) => normalized.includes(signal.toLowerCase())))?.[0] ?? "Physical worker";
+}
+
+function missingContext(question: string, language: LanguageMode, photoAttached = false) {
+  const normalized = question.toLowerCase();
+  const checks = [
+    {
+      label: "location",
+      signals:
+        language === "yue"
+          ? ["樓", "房", "天台", "地盤", "走廊", "附近", "入面", "出面", "沙井"]
+          : ["floor", "room", "roof", "site", "corridor", "near", "inside", "outside", "manhole", "area"],
+    },
+    {
+      label: "task/action",
+      signals:
+        language === "yue"
+          ? ["做", "搬", "入", "開", "整", "裝", "上", "落", "推", "繼續"]
+          : ["work", "move", "enter", "open", "repair", "install", "lift", "carry", "push", "continue"],
+    },
+    {
+      label: "visible hazard",
+      signals:
+        language === "yue"
+          ? ["水", "電", "煙", "火", "氣", "漏", "鬆", "爛", "滑", "味", "聲"]
+          : ["water", "electric", "smoke", "fire", "gas", "leak", "loose", "broken", "slip", "smell", "noise"],
+    },
+  ];
+
+  const missing = checks.filter((check) => !check.signals.some((signal) => normalized.includes(signal.toLowerCase()))).map((check) => check.label);
+  return photoAttached ? missing.filter((item) => item !== "visible hazard") : missing;
+}
+
+function buildReasoning(input: {
+  question: string;
+  language: LanguageMode;
+  rule: Rule | null;
+  risk: Risk;
+  photoAttached?: boolean;
+  atlasUsed?: boolean;
+}) {
+  const matchedSignals = matchingSignals(input.question, input.rule);
+  const gaps = missingContext(input.question, input.language, input.photoAttached);
+  const analysis: DecisionAnalysis = {
+    workerRole: detectWorkerRole(input.question),
+    hazardId: input.rule?.id ?? (input.risk === "ASK" ? "needs-more-context" : "general-task-readiness"),
+    matchedSignals,
+    missingContext: gaps,
+    rationale: [],
+  };
+
+  analysis.rationale.push(`Role signal: ${analysis.workerRole}.`);
+  analysis.rationale.push(
+    input.rule
+      ? `Hazard matched: ${analysis.hazardId}${matchedSignals.length ? ` via ${matchedSignals.join(", ")}` : ""}.`
+      : "No specific high-risk rule matched; using context sufficiency and general readiness checks.",
+  );
+  analysis.rationale.push(
+    gaps.length ? `Missing context: ${gaps.join(", ")}.` : "Context check: location/task/hazard signals are sufficient for a first-pass decision.",
+  );
+  analysis.rationale.push(
+    input.risk === "ASK"
+      ? "Decision: ASK because Herald should not invent a safety answer without enough site detail."
+      : `Decision: ${input.risk} based on the matched hazard severity and physical-worker safety policy.`,
+  );
+  analysis.rationale.push(
+    input.atlasUsed
+      ? "Reasoning source: Beever Atlas MCP ask_channel(mode=deep) supplied the cited answer."
+      : "Reasoning source: local Votee safety source pack fallback; add Beever MCP env vars for live Atlas reasoning.",
+  );
+
+  return analysis;
+}
+
 function isContextEnough(question: string, language: LanguageMode, photoAttached = false) {
   const normalized = question.toLowerCase();
   const words = normalized.split(/\s+/).filter(Boolean);
@@ -256,6 +355,7 @@ function isContextEnough(question: string, language: LanguageMode, photoAttached
 
 function contextResponse(question: string, language: LanguageMode, startedAt: number) {
   const isYue = language === "yue";
+  const reasoning = buildReasoning({ question, language, rule: null, risk: "ASK" });
 
   return Response.json(
     {
@@ -269,6 +369,7 @@ function contextResponse(question: string, language: LanguageMode, startedAt: nu
         ? ["講位置：例如樓層、房間、天台、沙井或設備旁邊。", "講動作：你準備做咩或想唔想繼續。", "講危險：見到水、電、煙、鬆脫、氣味、火花或其他異常。"]
         : ["Add the location: floor, room, roof, manhole, or equipment area.", "Add the action: what you are about to do or whether you want to continue.", "Add the hazard: water, electricity, smoke, loose parts, smell, sparks, or anything unusual."],
       citations: [],
+      reasoning: reasoning.rationale,
       supervisor: {
         status: "Not sent",
         message: isYue ? "未夠資料，暫時唔通知主管；補充現場資料後再判斷。" : "Not enough context to notify a supervisor yet; add site details first.",
@@ -345,6 +446,14 @@ export async function handleSafetyAsk(request: Request) {
   const copy = rule ? rule[language] : okCopy[language];
   const risk = rule?.risk ?? "OK";
   const atlas = await getAtlasAnswer(question, language, risk);
+  const reasoning = buildReasoning({
+    question,
+    language,
+    rule,
+    risk,
+    photoAttached: body.photoAttached,
+    atlasUsed: Boolean(atlas),
+  });
   const riskLabel = risk === "OK" ? "READY" : risk;
   const photoStep =
     language === "yue"
@@ -365,6 +474,7 @@ export async function handleSafetyAsk(request: Request) {
           excerpt: "Workers should verify task controls, PPE, and escalation routes before starting.",
         },
       ],
+      reasoning: reasoning.rationale,
       supervisor: {
         status: risk === "STOP" ? "Required" : risk === "CHECK" ? "Recommended" : "Optional",
         message:

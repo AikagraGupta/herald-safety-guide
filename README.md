@@ -20,36 +20,32 @@ Open http://127.0.0.1:5173.
 
 ## Votee Usage
 
-Herald now implements the Beever/Votee hackathon path from the Beever Atlas builder
-guide:
+Herald uses Votee as the safety-memory/source-pack layer and a hosted multimodal LLM
+as the reasoning layer. This keeps the demo easy to deploy while still grounding the
+answer in Votee-branded safety resources.
 
 1. `/api/ask` receives the worker question.
-2. Herald builds a structured safety-reasoning prompt for Votee/Beever Atlas.
-3. Herald calls Beever Atlas MCP `ask_channel(channel_id, question, mode="deep")`.
-4. The model returns strict JSON: `ASK`, `STOP`, `CHECK`, or `OK`, plus answer,
-   next steps, concise rationale, supervisor status, and citations.
-5. The UI displays Atlas' cited answer with `mode: "beever-atlas"`.
-6. If Atlas is not configured or times out, Herald refuses to generate a fake local
-   answer. This avoids the old "predefined hazard -> predefined response" behavior.
+2. If a camera photo is attached, the frontend sends the image data URL to `/api/ask`.
+3. The backend sends text plus image to the OpenAI Responses API for OCR, visual
+   inspection, Cantonese/English understanding, and safety reasoning.
+4. The prompt includes the Votee safety source pack as the cited memory layer.
+5. The model returns strict JSON: `ASK`, `STOP`, `CHECK`, or `OK`, plus answer,
+   next steps, concise rationale, supervisor status, citations, and OCR observations.
 
-Configure live Beever Atlas:
+Configure the live reasoning model:
 
 ```powershell
-$env:BEEVER_MCP_URL="http://localhost:8000/mcp"
-$env:BEEVER_MCP_KEY="your-mcp-key"
-$env:BEEVER_CHANNEL_NAME="site-safety" # or set BEEVER_CHANNEL_ID directly
-$env:BEEVER_ASK_MODE="deep"
+$env:OPENAI_API_KEY="your-openai-api-key"
+$env:OPENAI_MODEL="gpt-4o-mini"
 npm run dev
 ```
 
-Per the builder guide, use `whoami` and `list_channels` to get a real `channel_id`
-before relying on a production source pack. Herald does this automatically when
-`BEEVER_CHANNEL_ID` is not set.
+For Vercel, add `OPENAI_API_KEY` and optionally `OPENAI_MODEL` in Project Settings ->
+Environment Variables, then redeploy.
 
 Relevant files:
 
 - `src/components/live-safety-demo.tsx`: live React demo UI
-- `src/lib/beever-atlas-client.ts`: MCP JSON-RPC client for Beever Atlas
-- `src/lib/safety-api.ts`: Votee/Beever LLM reasoning contract for `/api/ask`
+- `src/lib/safety-api.ts`: multimodal LLM reasoning plus Votee source-pack context
 - `votee/site-safety-source-pack.json`: source pack for Beever Atlas
-- `.env.example`: Beever Atlas environment variables
+- `.env.example`: model and optional Beever Atlas environment variables

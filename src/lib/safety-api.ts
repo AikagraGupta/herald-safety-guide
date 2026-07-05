@@ -1,5 +1,3 @@
-import { askBeeverAtlas, isBeeverAtlasConfigured } from "./beever-atlas-client";
-
 type LanguageMode = "yue" | "en";
 type Risk = "STOP" | "CHECK" | "OK" | "ASK";
 
@@ -19,191 +17,261 @@ type LlmSafetyDecision = {
     message: string;
   };
   citations: Citation[];
+  observedText?: string;
 };
 
 const sourcePack = [
   {
     id: "fire-protection-controls",
-    title: "Site Fire Safety SOP",
+    title: "Votee Site Fire Safety SOP",
     content:
       "Fire detection, warning, and evacuation systems must remain available unless a documented temporary impairment procedure is active. Workers must not disable alarms without supervisor approval, temporary controls, and a compliance log.",
   },
   {
     id: "high-risk-escalation",
-    title: "Supervisor Escalation Rule",
+    title: "Votee Supervisor Escalation Rule",
     content:
       "Workers must escalate any request to bypass a safety system. The app should log the worker question, decision, citation, responsible supervisor, and final action.",
   },
   {
     id: "electrical-isolation",
-    title: "Electrical Isolation SOP",
+    title: "Votee Electrical Isolation SOP",
     content:
-      "Electrical work begins only after isolation, lockout/tagout, and testing by a competent person. Treat equipment as live until proven otherwise.",
+      "Electrical work begins only after isolation, lockout/tagout, and testing by a competent person. Treat equipment as live until proven otherwise. Wet conditions near electrical equipment should be treated as high risk until controlled.",
   },
   {
     id: "work-at-height",
-    title: "Work-at-Height Checklist",
+    title: "Votee Work-at-Height Checklist",
     content:
       "Work at height requires suitable access, fall prevention controls, stable footing, inspected equipment, and supervisor review when conditions change.",
   },
   {
+    id: "confined-space",
+    title: "Votee Confined Space Entry SOP",
+    content:
+      "Confined space entry needs a permit, atmospheric testing, ventilation, standby support, and rescue arrangements before anyone enters.",
+  },
+  {
     id: "hot-work-permit",
-    title: "Hot Work Permit SOP",
+    title: "Votee Hot Work Permit SOP",
     content:
       "Hot work requires permit approval, combustible control, extinguishing equipment, and a fire watch before work starts.",
   },
+  {
+    id: "frontline-uncertainty",
+    title: "Votee Frontline Uncertainty Rule",
+    content:
+      "If a worker's question lacks the location, intended action, or visible hazard, the system should ask for more context instead of inventing a safety answer.",
+  },
 ];
+
+const safetyDecisionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["risk", "answer", "steps", "reasoning", "supervisor", "citations", "observedText"],
+  properties: {
+    risk: { type: "string", enum: ["STOP", "CHECK", "OK", "ASK"] },
+    answer: { type: "string" },
+    steps: {
+      type: "array",
+      minItems: 2,
+      maxItems: 5,
+      items: { type: "string" },
+    },
+    reasoning: {
+      type: "array",
+      minItems: 2,
+      maxItems: 4,
+      items: { type: "string" },
+    },
+    supervisor: {
+      type: "object",
+      additionalProperties: false,
+      required: ["status", "message"],
+      properties: {
+        status: { type: "string", enum: ["Required", "Recommended", "Optional", "Not sent"] },
+        message: { type: "string" },
+      },
+    },
+    citations: {
+      type: "array",
+      minItems: 1,
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "source", "excerpt"],
+        properties: {
+          title: { type: "string" },
+          source: { type: "string" },
+          excerpt: { type: "string" },
+        },
+      },
+    },
+    observedText: { type: "string" },
+  },
+};
 
 function hasCjk(text: string) {
   return /[\u3400-\u9fff]/.test(text);
 }
 
-function buildVoteeReasoningPrompt(question: string, language: LanguageMode, photoAttached: boolean) {
+function getOpenAiConfig() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  return {
+    apiKey,
+    model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+  };
+}
+
+function buildPrompt(question: string, language: LanguageMode, hasImage: boolean) {
   const outputLanguage = language === "yue" ? "Cantonese, Hong Kong style" : "English";
-  const photoContext = photoAttached
-    ? "The worker attached a site photo, but the backend only receives a photo marker. Ask for visible details if the image content is necessary."
-    : "No photo was attached.";
 
   return [
     "You are Herald, an AI safety copilot for physical workers: firefighters, EMTs, utility crews, warehouse teams, maintenance workers, construction crews, facilities staff, and field operators.",
-    "Reason from the worker's natural-language question and the safety source pack. Do not choose from canned examples. Do not copy a predefined answer. Make a fresh decision for this exact situation.",
-    "Use deep reasoning across the available context. If the worker gives too little context, choose ASK and ask for the missing details instead of guessing.",
-    "Classify the decision as one of:",
-    "- STOP: immediate serious harm, unsafe bypass, energy isolation, emergency, confined space, fire/smoke, live electrical, fall, unknown high-risk condition.",
-    "- CHECK: potentially manageable only after verification, permit, PPE, supervisor, area control, or source-pack confirmation.",
-    "- OK: ordinary low-risk task where the worker can proceed only if normal controls match the site.",
-    "- ASK: insufficient location/task/hazard detail to make a safe call.",
-    `Return the worker-facing content in ${outputLanguage}. Keep it concise enough for a phone screen.`,
-    photoContext,
-    "Return ONLY valid JSON. Do not wrap it in markdown. The JSON schema is:",
-    JSON.stringify(
-      {
-        risk: "STOP | CHECK | OK | ASK",
-        answer: "one direct worker-facing answer",
-        steps: ["concrete next action 1", "concrete next action 2", "concrete next action 3"],
-        reasoning: [
-          "short rationale item about what was understood",
-          "short rationale item about missing/sufficient context",
-          "short rationale item about why the risk classification was chosen",
-        ],
-        supervisor: {
-          status: "Required | Recommended | Optional | Not sent",
-          message: "short supervisor/escalation message",
-        },
-        citations: [
-          {
-            title: "source title",
-            source: "source id or Beever Atlas citation",
-            excerpt: "short supporting excerpt",
-          },
-        ],
-      },
-      null,
-      2,
-    ),
-    "Safety source pack available to the model:",
+    "Use the worker's natural-language question, any attached image, and the Votee safety source pack below. The Votee pack is the cited safety memory. The LLM is the reasoning engine.",
+    "If an image is attached, inspect it for hazards and OCR any visible labels, signs, panels, gauges, permits, tags, warnings, or written instructions. Put only relevant OCR/visual observations in observedText.",
+    "Do not use canned examples. Make a fresh decision for this exact situation.",
+    "If the question or image lacks enough context, choose ASK and ask for the missing details instead of guessing.",
+    "Risk rules:",
+    "- STOP: immediate serious harm, unsafe bypass, emergency, confined space, fire/smoke, live electrical, wet electrical condition, fall hazard, unstable heavy load, chemical/gas exposure, or unknown high-risk condition.",
+    "- CHECK: potentially manageable only after verification, permit, PPE, supervisor review, area control, or source-pack confirmation.",
+    "- OK: ordinary low-risk task where normal controls clearly match the site.",
+    "- ASK: insufficient location/task/hazard detail.",
+    `Return worker-facing content in ${outputLanguage}. Keep it short enough for a phone screen.`,
+    hasImage ? "Image status: attached." : "Image status: none.",
+    "Votee safety source pack:",
     JSON.stringify(sourcePack, null, 2),
     `Worker question: ${question}`,
   ].join("\n\n");
 }
 
-function extractJson(text: string) {
-  const withoutFence = text
-    .trim()
-    .replace(/^```(?:json)?/i, "")
-    .replace(/```$/i, "")
-    .trim();
-  const start = withoutFence.indexOf("{");
-  const end = withoutFence.lastIndexOf("}");
+function normalizeDecision(value: unknown): LlmSafetyDecision | null {
+  const parsed = value as Partial<LlmSafetyDecision> | null;
+  if (!parsed || typeof parsed !== "object") return null;
+  if (!["STOP", "CHECK", "OK", "ASK"].includes(String(parsed.risk))) return null;
+  if (!parsed.answer?.trim()) return null;
 
-  if (start === -1 || end === -1 || end <= start) return null;
-  return withoutFence.slice(start, end + 1);
-}
-
-function asStringArray(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item).trim()).filter(Boolean).slice(0, 5);
-}
-
-function normalizeRisk(value: unknown): Risk | null {
-  const risk = String(value ?? "").toUpperCase();
-  if (risk === "STOP" || risk === "CHECK" || risk === "OK" || risk === "ASK") return risk;
-  return null;
-}
-
-function normalizeCitations(value: unknown, atlasCitations: Citation[]) {
-  const parsed = Array.isArray(value)
-    ? value
-        .map((item, index) => {
-          const citation = (item ?? {}) as Record<string, unknown>;
-          return {
-            title: String(citation.title ?? `Votee reasoning citation ${index + 1}`),
-            source: String(citation.source ?? "Beever Atlas"),
+  return {
+    risk: parsed.risk as Risk,
+    answer: String(parsed.answer).trim(),
+    steps: Array.isArray(parsed.steps) ? parsed.steps.map(String).filter(Boolean).slice(0, 5) : [],
+    reasoning: Array.isArray(parsed.reasoning) ? parsed.reasoning.map(String).filter(Boolean).slice(0, 4) : [],
+    supervisor: {
+      status: parsed.supervisor?.status ?? (parsed.risk === "STOP" ? "Required" : parsed.risk === "CHECK" ? "Recommended" : "Optional"),
+      message: parsed.supervisor?.message ?? "Supervisor review depends on the model decision.",
+    },
+    citations: Array.isArray(parsed.citations)
+      ? parsed.citations
+          .map((citation) => ({
+            title: String(citation.title ?? "Votee safety source pack"),
+            source: String(citation.source ?? "Votee"),
             excerpt: String(citation.excerpt ?? ""),
-          };
-        })
-        .filter((item) => item.title || item.excerpt)
-        .slice(0, 4)
-    : [];
+          }))
+          .filter((citation) => citation.title && citation.excerpt)
+          .slice(0, 4)
+      : [],
+    observedText: String(parsed.observedText ?? ""),
+  };
+}
 
-  if (parsed.length) return parsed;
-  if (atlasCitations.length) return atlasCitations.slice(0, 4);
+function parseOutputText(payload: Record<string, unknown>) {
+  if (typeof payload.output_text === "string") return payload.output_text;
 
-  return [
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  for (const item of output) {
+    const content = Array.isArray((item as Record<string, unknown>).content) ? ((item as Record<string, unknown>).content as unknown[]) : [];
+    for (const part of content) {
+      const text = (part as Record<string, unknown>).text;
+      if (typeof text === "string") return text;
+    }
+  }
+
+  return "";
+}
+
+async function askReasoningModel(question: string, language: LanguageMode, imageDataUrl?: string) {
+  const config = getOpenAiConfig();
+  if (!config) {
+    throw new Error("OPENAI_API_KEY is missing. Add it in Vercel Environment Variables to enable LLM reasoning, OCR, Cantonese, and image understanding.");
+  }
+
+  const content: Array<Record<string, unknown>> = [
     {
-      title: "Votee Beever Atlas",
-      source: "ask_channel(mode=deep)",
-      excerpt: "Decision generated by live Beever Atlas reasoning from the worker question and safety source context.",
+      type: "input_text",
+      text: buildPrompt(question, language, Boolean(imageDataUrl)),
     },
   ];
-}
 
-function parseLlmDecision(answer: string, atlasCitations: Citation[]): LlmSafetyDecision | null {
-  const json = extractJson(answer);
-  if (!json) return null;
+  if (imageDataUrl) {
+    content.push({
+      type: "input_image",
+      image_url: imageDataUrl,
+      detail: "low",
+    });
+  }
 
-  try {
-    const parsed = JSON.parse(json) as Record<string, unknown>;
-    const risk = normalizeRisk(parsed.risk);
-    const workerAnswer = String(parsed.answer ?? "").trim();
-    if (!risk || !workerAnswer) return null;
-
-    const supervisor = (parsed.supervisor ?? {}) as Record<string, unknown>;
-
-    return {
-      risk,
-      answer: workerAnswer,
-      steps: asStringArray(parsed.steps),
-      reasoning: asStringArray(parsed.reasoning),
-      supervisor: {
-        status: String(supervisor.status ?? (risk === "STOP" ? "Required" : risk === "CHECK" ? "Recommended" : "Optional")),
-        message: String(supervisor.message ?? "Supervisor review depends on the model decision."),
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      input: [
+        {
+          role: "user",
+          content,
+        },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "herald_safety_decision",
+          strict: true,
+          schema: safetyDecisionSchema,
+        },
       },
-      citations: normalizeCitations(parsed.citations, atlasCitations),
-    };
-  } catch {
-    return null;
-  }
-}
+      max_output_tokens: 900,
+      store: false,
+    }),
+  });
 
-async function getVoteeDecision(question: string, language: LanguageMode, photoAttached: boolean) {
-  const atlas = await askBeeverAtlas(buildVoteeReasoningPrompt(question, language, photoAttached));
-  if (!atlas?.answer?.trim()) return null;
+  const payload = (await response.json()) as Record<string, unknown>;
 
-  const parsed = parseLlmDecision(atlas.answer, atlas.citations);
-  if (!parsed) {
-    throw new Error("Votee returned an answer, but not the structured reasoning JSON Herald needs.");
+  if (!response.ok) {
+    const error = (payload.error ?? {}) as Record<string, unknown>;
+    throw new Error(String(error.message ?? `OpenAI reasoning failed with HTTP ${response.status}`));
   }
 
-  if (!parsed.steps.length) {
-    parsed.steps = ["Pause and confirm the site condition.", "Escalate to a competent supervisor if risk is unclear."];
+  const outputText = parseOutputText(payload);
+  if (!outputText) throw new Error("The reasoning model returned no structured text.");
+
+  const decision = normalizeDecision(JSON.parse(outputText));
+  if (!decision) throw new Error("The reasoning model returned an invalid safety decision.");
+
+  if (!decision.steps.length) {
+    decision.steps = ["Pause and confirm the site condition.", "Escalate to a competent supervisor if risk is unclear."];
   }
 
-  if (!parsed.reasoning.length) {
-    parsed.reasoning = ["Votee Beever Atlas generated this decision from the worker question and safety source context."];
+  if (!decision.reasoning.length) {
+    decision.reasoning = ["The LLM reasoned from the worker question, attached image if present, and Votee safety source context."];
   }
 
-  return parsed;
+  if (!decision.citations.length) {
+    decision.citations = [
+      {
+        title: "Votee safety source pack",
+        source: "frontline-uncertainty",
+        excerpt: "If context is missing, ask for more details instead of inventing a safety answer.",
+      },
+    ];
+  }
+
+  return decision;
 }
 
 export async function handleSafetyAsk(request: Request) {
@@ -211,7 +279,7 @@ export async function handleSafetyAsk(request: Request) {
     return Response.json({ error: "Use POST for safety questions." }, { status: 405 });
   }
 
-  let body: { question?: string; language?: LanguageMode; photoAttached?: boolean };
+  let body: { question?: string; language?: LanguageMode; imageDataUrl?: string };
 
   try {
     body = await request.json();
@@ -220,43 +288,34 @@ export async function handleSafetyAsk(request: Request) {
   }
 
   const question = body.question?.trim();
-  if (!question) {
-    return Response.json({ error: "Ask a safety question first." }, { status: 400 });
-  }
-
-  if (!isBeeverAtlasConfigured()) {
-    return Response.json(
-      {
-        error:
-          "Live Votee/Beever LLM reasoning is not configured. Add BEEVER_MCP_KEY plus BEEVER_MCP_URL and BEEVER_CHANNEL_ID or BEEVER_CHANNEL_NAME in Vercel. This build no longer uses predefined local answers.",
-      },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
+  if (!question && !body.imageDataUrl) {
+    return Response.json({ error: "Ask a question or attach a site photo first." }, { status: 400 });
   }
 
   const startedAt = Date.now();
-  const language: LanguageMode = body.language === "en" && !hasCjk(question) ? "en" : "yue";
+  const language: LanguageMode = body.language === "en" && !hasCjk(question ?? "") ? "en" : "yue";
 
   try {
-    const decision = await getVoteeDecision(question, language, Boolean(body.photoAttached));
+    const decision = await askReasoningModel(question || "Please inspect this site photo and advise what the worker should do.", language, body.imageDataUrl);
 
     return Response.json(
       {
-        mode: "beever-atlas",
+        mode: "openai-votee-source-pack",
         risk: decision.risk,
         answer: decision.answer,
         language,
         steps: decision.steps,
         citations: decision.citations,
         reasoning: decision.reasoning,
+        observedText: decision.observedText,
         supervisor: decision.supervisor,
         logs: [
           {
             id: `LOG-${startedAt}`,
             time: new Date(startedAt).toISOString(),
-            question,
+            question: question || "[site photo only]",
             risk: decision.risk,
-            ruleId: "votee-llm-reasoned",
+            ruleId: "llm-reasoned-votee-source-pack",
           },
         ],
         latencyMs: Math.max(45, Date.now() - startedAt),
@@ -268,13 +327,10 @@ export async function handleSafetyAsk(request: Request) {
       },
     );
   } catch (error) {
-    console.error("Votee reasoning failed.", error);
+    console.error("LLM reasoning failed.", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Votee/Beever reasoning failed. Try again after confirming the Atlas MCP server and channel are available.",
+        error: error instanceof Error ? error.message : "LLM reasoning failed. Check OPENAI_API_KEY and try again.",
       },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );

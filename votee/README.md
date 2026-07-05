@@ -3,23 +3,21 @@
 Herald uses Votee's Beever Atlas pattern as the memory layer for physical-worker safety
 guidance.
 
-For the hackathon prototype, the app runs with a local Atlas-ready source pack so the demo
-does not fail if Docker, API keys, or a live Atlas stack are unavailable during judging.
-When Beever Atlas is running, `server.js` can proxy questions to Atlas with:
+For the hackathon prototype, the app uses this Atlas-ready source pack as the Votee
+memory layer and sends the worker question/photo to a hosted multimodal LLM for the
+actual reasoning, OCR, Cantonese/English handling, and structured safety decision.
 
 ```powershell
-$env:ATLAS_URL="http://localhost:8000"
-$env:ATLAS_KEY="dev-key-change-me"
-$env:ATLAS_CHANNEL="site-safety"
-npm start
+$env:OPENAI_API_KEY="your-openai-api-key"
+npm run dev
 ```
 
 ## Intended Atlas Flow
 
-1. Load `site-safety-source-pack.json` into a Beever Atlas channel named `site-safety`.
-2. Sync site SOPs, worker Q&A, incident playbooks, and HK regulatory excerpts.
-3. Herald asks Atlas for cited answers through the channel ask endpoint.
-4. Herald applies a high-risk safety router before showing the answer.
+1. Keep `site-safety-source-pack.json` as the Votee safety memory for the prototype.
+2. The backend injects the source pack into the LLM prompt as cited context.
+3. The LLM reads worker text, Cantonese, English, and attached camera images.
+4. The model returns `ASK`, `STOP`, `CHECK`, or `OK` plus citations and rationale.
 5. STOP/CHECK decisions notify a supervisor and create an audit log.
 
 This keeps the original Herald idea intact: AI for physical workers, Cantonese-first,

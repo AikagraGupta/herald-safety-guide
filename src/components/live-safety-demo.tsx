@@ -43,6 +43,7 @@ type AskResult = {
   steps: string[];
   citations: Citation[];
   reasoning?: string[];
+  observedText?: string;
   supervisor: Supervisor;
   logs: LogEntry[];
   latencyMs: number;
@@ -82,6 +83,7 @@ export function LiveSafetyDemo() {
   const [listening, setListening] = useState(false);
   const [voiceReply, setVoiceReply] = useState(true);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [photoName, setPhotoName] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -96,7 +98,7 @@ export function LiveSafetyDemo() {
 
   async function askHerald(nextQuestion = question, nextLanguage = language) {
     const trimmed = nextQuestion.trim();
-    if (!trimmed) return;
+    if (!trimmed && !photoDataUrl) return;
 
     window.speechSynthesis?.cancel();
     setQuestion(trimmed);
@@ -111,7 +113,7 @@ export function LiveSafetyDemo() {
         body: JSON.stringify({
           question: trimmed,
           language: nextLanguage,
-          photoAttached: Boolean(photoPreview),
+          imageDataUrl: photoDataUrl,
         }),
       });
       const payload = await response.json();
@@ -172,14 +174,25 @@ export function LiveSafetyDemo() {
 
   function handlePhoto(file: File | undefined) {
     if (!file) return;
+    if (file.size > 4_500_000) {
+      setError("Photo is too large for the demo. Try a smaller image or screenshot.");
+      return;
+    }
+
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoPreview(URL.createObjectURL(file));
     setPhotoName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = () => setPhotoDataUrl(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => setError("Could not read the photo. Try another image.");
+    reader.readAsDataURL(file);
   }
 
   function clearPhoto() {
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoPreview(null);
+    setPhotoDataUrl(null);
     setPhotoName(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -187,7 +200,7 @@ export function LiveSafetyDemo() {
   const risk = result?.risk;
   const RiskIcon = risk ? riskIcon[risk] : ShieldCheck;
   const sourceMode =
-    result?.mode === "beever-atlas" ? "Beever Atlas deep reasoning" : "Votee LLM required";
+    result?.mode === "openai-votee-source-pack" ? "LLM + Votee source pack" : "LLM reasoning";
 
   return (
     <section id="live-demo" className="flex flex-1 flex-col gap-3 pb-4">
@@ -297,7 +310,7 @@ export function LiveSafetyDemo() {
             <button
               type="button"
               onClick={() => askHerald()}
-              disabled={loading || !question.trim()}
+              disabled={loading || (!question.trim() && !photoDataUrl)}
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-4 text-[13px] font-medium text-[var(--primary-foreground)] transition disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Checking..." : "Check"}
@@ -360,8 +373,8 @@ export function LiveSafetyDemo() {
               </div>
               <ol className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
                 {(result?.reasoning ?? [
-                  "Herald checks role, task, hazard signals, and missing context before answering.",
-                  "Beever Atlas deep reasoning generates the safety decision when MCP credentials are configured.",
+                  "Herald sends the worker question and photo to a multimodal LLM.",
+                  "The model reasons over the Votee safety source pack before deciding.",
                 ])
                   .slice(0, 3)
                   .map((step) => (
@@ -369,6 +382,15 @@ export function LiveSafetyDemo() {
                   ))}
               </ol>
             </div>
+            {result?.observedText && (
+              <div className="mt-3 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/50 p-3">
+                <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  Photo / OCR read
+                </div>
+                <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">{result.observedText}</p>
+              </div>
+            )}
           </div>
 
           <div className="mt-3 grid gap-3">
@@ -376,7 +398,7 @@ export function LiveSafetyDemo() {
               <ol className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
                 {(result?.steps ?? [
                   "Describe the task, location, and visible hazard.",
-                  "Herald sends the question to Votee/Beever Atlas deep reasoning.",
+                  "Attach a photo if text, labels, panels, or site conditions matter.",
                   "If context is missing, the model should ask before deciding.",
                 ]).map((step) => (
                   <li key={step}>{step}</li>
@@ -393,9 +415,9 @@ export function LiveSafetyDemo() {
             <InfoCard icon={<ShieldCheck className="h-4 w-4 text-foreground/70" />} title="Decision rationale">
               <ol className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
                 {(result?.reasoning ?? [
-                  "Herald sends the worker question to Beever Atlas ask_channel(mode=deep).",
+                  "Herald sends text plus any photo to a hosted multimodal LLM.",
+                  "The prompt includes the Votee source pack as cited safety memory.",
                   "The model returns STOP, CHECK, OK, or ASK with reasoning and citations.",
-                  "No predefined local answers are used when Votee is unavailable.",
                 ]).map((step) => (
                   <li key={step}>{step}</li>
                 ))}

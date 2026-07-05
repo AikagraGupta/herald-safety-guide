@@ -10,13 +10,6 @@ export default defineConfig({
   nitro: {
     preset: "vercel",
   },
-  vite: {
-    server: {
-      proxy: {
-        "/api": "http://127.0.0.1:4173",
-      },
-    },
-  },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this

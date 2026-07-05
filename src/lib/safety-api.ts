@@ -1,3 +1,5 @@
+import { askBeeverAtlas } from "./beever-atlas-client";
+
 type LanguageMode = "yue" | "en";
 type Risk = "STOP" | "CHECK" | "OK" | "ASK";
 
@@ -11,6 +13,31 @@ type Rule = {
 };
 
 const rules: Rule[] = [
+  {
+    id: "firefighter-low-air-smoke-entry",
+    risk: "STOP",
+    keywords: ["firefighter", "scba", "low air", "air alarm", "smoky room", "smoke-filled", "mayday", "煙", "空氣樽", "呼吸器", "低氣壓"],
+    en: {
+      answer:
+        "Stop advancing. A low-air alarm or SCBA concern in smoke is an immediate withdrawal and crew-accountability situation, not a push-forward moment.",
+      steps: [
+        "Tell your partner and officer immediately.",
+        "Begin controlled withdrawal while maintaining crew contact.",
+        "Call Mayday or emergency traffic if you are disoriented, trapped, separated, or cannot exit safely.",
+      ],
+    },
+    yue: {
+      answer: "停低，唔好再推前。煙入面呼吸器低氣壓或有問題，要即刻撤出並做隊員點名，唔係繼續入去。",
+      steps: ["即刻通知拍檔同指揮／隊長。", "保持隊員接觸，有控制咁撤出。", "如果迷路、被困、失散或出唔到，要即刻發出緊急求救。"],
+    },
+    citations: [
+      {
+        title: "Votee Safety Atlas",
+        source: "Firefighter respiratory protection",
+        excerpt: "Low-air and SCBA warnings require immediate crew communication, withdrawal, and emergency escalation if exit is compromised.",
+      },
+    ],
+  },
   {
     id: "fire-alarm-disable",
     risk: "STOP",
@@ -265,6 +292,30 @@ function contextResponse(question: string, language: LanguageMode, startedAt: nu
   );
 }
 
+function atlasPrompt(question: string, language: LanguageMode, risk: Exclude<Risk, "ASK">) {
+  const outputLanguage = language === "yue" ? "Cantonese, Hong Kong style" : "English";
+
+  return [
+    "You are Herald, an AI safety guide for all physical workers: firefighters, EMTs, utility crews, warehouse teams, maintenance workers, construction crews, and field operators.",
+    "Use Beever Atlas channel knowledge to give a cited, practical safety answer. If the channel does not contain enough domain evidence, say what source context is missing.",
+    `Return the answer in ${outputLanguage}.`,
+    `The app's risk router classified this as ${risk}. Do not downgrade a STOP or CHECK classification.`,
+    "Keep it short enough to read on a phone. Include concrete next actions.",
+    `Worker question: ${question}`,
+  ].join("\n");
+}
+
+async function getAtlasAnswer(question: string, language: LanguageMode, risk: Exclude<Risk, "ASK">) {
+  try {
+    const atlas = await askBeeverAtlas(atlasPrompt(question, language, risk));
+    if (!atlas?.answer?.trim()) return null;
+    return atlas;
+  } catch (error) {
+    console.warn("Beever Atlas unavailable; using local safety source pack.", error);
+    return null;
+  }
+}
+
 export async function handleSafetyAsk(request: Request) {
   if (request.method !== "POST") {
     return Response.json({ error: "Use POST for safety questions." }, { status: 405 });
@@ -293,6 +344,7 @@ export async function handleSafetyAsk(request: Request) {
 
   const copy = rule ? rule[language] : okCopy[language];
   const risk = rule?.risk ?? "OK";
+  const atlas = await getAtlasAnswer(question, language, risk);
   const riskLabel = risk === "OK" ? "READY" : risk;
   const photoStep =
     language === "yue"
@@ -301,12 +353,12 @@ export async function handleSafetyAsk(request: Request) {
 
   return Response.json(
     {
-      mode: "votee-source-pack",
+      mode: atlas ? "beever-atlas" : "votee-source-pack",
       risk,
-      answer: copy.answer,
+      answer: atlas?.answer ?? copy.answer,
       language,
       steps: body.photoAttached ? [...copy.steps, photoStep] : copy.steps,
-      citations: rule?.citations ?? [
+      citations: atlas?.citations.length ? atlas.citations : rule?.citations ?? [
         {
           title: "Votee Safety Atlas",
           source: "General task readiness",

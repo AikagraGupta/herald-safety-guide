@@ -4,7 +4,8 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/dev-full.cjs",
+    "dev": "vite dev",
+    "dev:full": "node scripts/dev-full.cjs",
     "dev:web": "vite dev",
     "dev:api": "node api-server.cjs",
     "build": "vite build",

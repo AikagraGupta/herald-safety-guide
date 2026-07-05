@@ -11,7 +11,6 @@ import {
   RadioTower,
   Send,
   ShieldCheck,
-  Upload,
   Volume2,
   VolumeX,
   X,
@@ -134,8 +133,7 @@ export function LiveSafetyDemo() {
   const [photoName, setPhotoName] = useState<string | null>(null);
   const [photoProcessing, setPhotoProcessing] = useState(false);
   const recognitionRef = useRef<any>(null);
-  const cameraInputRef = useRef<HTMLInputElement | null>(null);
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -240,8 +238,7 @@ export function LiveSafetyDemo() {
       setPhotoPreview(null);
       setPhotoDataUrl(null);
       setPhotoName(null);
-      if (cameraInputRef.current) cameraInputRef.current.value = "";
-      if (uploadInputRef.current) uploadInputRef.current.value = "";
+      if (photoInputRef.current) photoInputRef.current.value = "";
     } finally {
       setPhotoProcessing(false);
     }
@@ -253,8 +250,7 @@ export function LiveSafetyDemo() {
     setPhotoDataUrl(null);
     setPhotoName(null);
     setPhotoProcessing(false);
-    if (cameraInputRef.current) cameraInputRef.current.value = "";
-    if (uploadInputRef.current) uploadInputRef.current.value = "";
+    if (photoInputRef.current) photoInputRef.current.value = "";
   }
 
   const risk = result?.risk;
@@ -351,7 +347,7 @@ export function LiveSafetyDemo() {
             </div>
           )}
 
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_1.35fr]">
+          <div className="mt-3 grid grid-cols-[1fr_1fr_1.35fr] gap-2">
             <button
               type="button"
               onClick={startVoice}
@@ -366,39 +362,23 @@ export function LiveSafetyDemo() {
             </button>
             <button
               type="button"
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={() => photoInputRef.current?.click()}
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--panel)] text-[13px] font-medium text-foreground"
             >
               <Camera className="h-4 w-4" />
-              Camera
-            </button>
-            <button
-              type="button"
-              onClick={() => uploadInputRef.current?.click()}
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--panel)] text-[13px] font-medium text-foreground"
-            >
-              <Upload className="h-4 w-4" />
-              Upload
+              Photo
             </button>
             <button
               type="button"
               onClick={() => askHerald()}
               disabled={loading || photoProcessing || (!question.trim() && !photoDataUrl)}
-              className="col-span-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-4 text-[13px] font-medium text-[var(--primary-foreground)] transition disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-4 text-[13px] font-medium text-[var(--primary-foreground)] transition disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Checking..." : photoProcessing ? "Preparing..." : "Check"}
               <Send className="h-4 w-4" />
             </button>
             <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(event) => handlePhoto(event.target.files?.[0])}
-            />
-            <input
-              ref={uploadInputRef}
+              ref={photoInputRef}
               type="file"
               accept="image/*"
               className="hidden"

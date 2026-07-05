@@ -1,0 +1,431 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  AlertTriangle,
+  BadgeHelp,
+  BookOpenCheck,
+  Camera,
+  CheckCircle2,
+  ClipboardList,
+  Image as ImageIcon,
+  Mic,
+  RadioTower,
+  Send,
+  ShieldCheck,
+  Volume2,
+  VolumeX,
+  X,
+} from "lucide-react";
+
+type Citation = {
+  title: string;
+  source: string;
+  excerpt: string;
+};
+
+type Supervisor = {
+  status: string;
+  message: string;
+};
+
+type LogEntry = {
+  id: string;
+  time: string;
+  question: string;
+  risk: string;
+  ruleId: string;
+};
+
+type AskResult = {
+  mode: string;
+  risk: "STOP" | "CHECK" | "OK" | "ASK";
+  answer: string;
+  language?: "yue" | "en";
+  steps: string[];
+  citations: Citation[];
+  supervisor: Supervisor;
+  logs: LogEntry[];
+  latencyMs: number;
+};
+
+type LanguageMode = "yue" | "en";
+
+const riskStyles = {
+  STOP: "border-[var(--danger)]/25 bg-[var(--danger)]/10 text-[var(--danger)]",
+  CHECK: "border-[var(--gold)]/30 bg-[var(--gold)]/12 text-[var(--gold)]",
+  OK: "border-emerald-700/20 bg-emerald-700/10 text-emerald-700",
+  ASK: "border-[var(--border-strong)] bg-[var(--panel)] text-foreground",
+};
+
+const riskIcon = {
+  STOP: AlertTriangle,
+  CHECK: ShieldCheck,
+  OK: CheckCircle2,
+  ASK: BadgeHelp,
+};
+
+function hasCjk(text: string) {
+  return /[\u3400-\u9fff]/.test(text);
+}
+
+function speechLang(language: LanguageMode, text = "") {
+  if (language === "yue" || hasCjk(text)) return "zh-HK";
+  return "en-HK";
+}
+
+export function LiveSafetyDemo() {
+  const [language, setLanguage] = useState<LanguageMode>("yue");
+  const [question, setQuestion] = useState("");
+  const [result, setResult] = useState<AskResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
+  const [voiceReply, setVoiceReply] = useState(true);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoName, setPhotoName] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+      window.speechSynthesis?.cancel();
+      recognitionRef.current?.abort?.();
+    };
+  }, [photoPreview]);
+
+  async function askHerald(nextQuestion = question, nextLanguage = language) {
+    const trimmed = nextQuestion.trim();
+    if (!trimmed) return;
+
+    window.speechSynthesis?.cancel();
+    setQuestion(trimmed);
+    setLanguage(nextLanguage);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: trimmed,
+          language: nextLanguage,
+          photoAttached: Boolean(photoPreview),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Herald could not answer.");
+      setResult(payload);
+      if (voiceReply) speak(payload.answer, payload.language === "yue" ? "yue" : nextLanguage);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Herald could not answer.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function speak(text = result?.answer ?? "", langMode = language) {
+    if (!text || !("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = speechLang(langMode, text);
+    utterance.rate = 0.92;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function startVoice() {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Voice input is not available in this browser. Type the question instead.");
+      return;
+    }
+
+    window.speechSynthesis?.cancel();
+    recognitionRef.current?.abort?.();
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = speechLang(language);
+
+    recognition.onstart = () => {
+      setError(null);
+      setListening(true);
+    };
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => {
+      setListening(false);
+      setError("Could not hear clearly. Try again or type the question.");
+    };
+    recognition.onresult = (event: any) => {
+      const transcript = event.results?.[0]?.[0]?.transcript;
+      if (transcript) {
+        setQuestion(transcript);
+        void askHerald(transcript, language);
+      }
+    };
+    recognition.start();
+  }
+
+  function handlePhoto(file: File | undefined) {
+    if (!file) return;
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoName(file.name);
+  }
+
+  function clearPhoto() {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoPreview(null);
+    setPhotoName(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const risk = result?.risk;
+  const RiskIcon = risk ? riskIcon[risk] : ShieldCheck;
+  const sourceMode = result?.mode === "beever-atlas" ? "Live Beever Atlas" : "Votee Atlas source pack";
+
+  return (
+    <section id="live-demo" className="flex flex-1 flex-col gap-3 pb-4">
+      <div className="panel-lift flex flex-1 flex-col overflow-hidden rounded-[1.5rem]">
+        <div className="border-b border-[var(--border)] bg-[var(--panel)] p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="eyebrow">Worker console</div>
+              <h1 className="h-display mt-1 text-[30px] leading-none sm:text-4xl">Ask before acting.</h1>
+              <p className="mt-2 text-[13.5px] leading-relaxed text-muted-foreground">
+                Speak or type in Cantonese or English. Herald asks for missing context before deciding.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setVoiceReply((value) => !value)}
+              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition ${
+                voiceReply
+                  ? "border-[var(--gold)]/40 bg-[var(--gold)]/10 text-[var(--gold)]"
+                  : "border-[var(--border)] bg-[var(--muted)] text-muted-foreground"
+              }`}
+              style={{ width: 44, height: 44, minWidth: 44 }}
+              aria-label={voiceReply ? "Voice response on" : "Voice response off"}
+              title={voiceReply ? "Voice response on" : "Voice response off"}
+            >
+              {voiceReply ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </button>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/70 p-1">
+            {[
+              ["yue", "粵語"],
+              ["en", "English"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setLanguage(value as LanguageMode)}
+                className={`min-h-10 rounded-full text-[13px] font-medium transition ${
+                  language === value ? "bg-[var(--panel)] text-foreground shadow-sm" : "text-muted-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4">
+            <label htmlFor="worker-question" className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Worker question
+            </label>
+            <textarea
+              id="worker-question"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder={
+                language === "yue"
+                  ? "講低你喺邊度、做緊咩、見到咩危險..."
+                  : "Describe where you are, what you are doing, and what looks unsafe..."
+              }
+              className="mt-2 min-h-28 w-full resize-none rounded-2xl border border-[var(--border)] bg-[var(--muted)]/50 p-4 text-[16px] leading-relaxed outline-none transition focus:border-[var(--border-strong)]"
+            />
+          </div>
+
+          {photoPreview && (
+            <div className="mt-3 flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--muted)]/50 p-2">
+              <img src={photoPreview} alt="Attached site condition" className="h-14 w-14 rounded-xl object-cover" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 text-[12px] font-medium text-foreground">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  Site photo attached
+                </div>
+                <div className="truncate text-[11.5px] text-muted-foreground">{photoName}</div>
+              </div>
+              <button
+                type="button"
+                onClick={clearPhoto}
+                className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--panel)]"
+                aria-label="Remove photo"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="mt-3 grid grid-cols-[1fr_1fr_1.35fr] gap-2">
+            <button
+              type="button"
+              onClick={startVoice}
+              className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-full border text-[13px] font-medium transition ${
+                listening
+                  ? "border-[var(--danger)]/30 bg-[var(--danger)]/10 text-[var(--danger)]"
+                  : "border-[var(--border)] bg-[var(--panel)] text-foreground"
+              }`}
+            >
+              <Mic className="h-4 w-4" />
+              {listening ? "Listening" : "Speak"}
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--panel)] text-[13px] font-medium text-foreground"
+            >
+              <Camera className="h-4 w-4" />
+              Photo
+            </button>
+            <button
+              type="button"
+              onClick={() => askHerald()}
+              disabled={loading || !question.trim()}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-4 text-[13px] font-medium text-[var(--primary-foreground)] transition disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "Checking..." : "Check"}
+              <Send className="h-4 w-4" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(event) => handlePhoto(event.target.files?.[0])}
+            />
+          </div>
+
+          {error && (
+            <div className="mt-3 rounded-2xl border border-[var(--danger)]/25 bg-[var(--danger)]/10 p-3 text-[13px] text-[var(--danger)]">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto bg-[var(--muted)]/35 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div
+              className={`inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-[12px] font-semibold tracking-wider ${
+                risk ? riskStyles[risk] : "border-[var(--border)] bg-[var(--panel)] text-muted-foreground"
+              }`}
+            >
+              <RiskIcon className="h-4 w-4" />
+              {risk ?? "READY"}
+            </div>
+            <div className="rounded-full border border-[var(--border)] bg-[var(--panel)] px-3 py-1 text-[11.5px] font-medium text-muted-foreground">
+              {result ? `${result.latencyMs}ms · ${sourceMode}` : sourceMode}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Herald answer
+              </div>
+              <button
+                type="button"
+                onClick={() => speak()}
+                disabled={!result?.answer}
+                className="inline-flex h-10 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--muted)]/50 px-3 text-[12px] font-medium text-foreground disabled:opacity-40"
+              >
+                <Volume2 className="h-3.5 w-3.5" />
+                Play
+              </button>
+            </div>
+            <p className="mt-3 text-[17px] font-medium leading-relaxed text-foreground">
+              {result?.answer ?? "Ask a question to get a STOP, CHECK, OK, or context request with cited sources."}
+            </p>
+          </div>
+
+          <div className="mt-3 grid gap-3">
+            <InfoCard icon={<ClipboardList className="h-4 w-4 text-[var(--gold)]" />} title="Next steps">
+              <ol className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
+                {(result?.steps ?? [
+                  "Describe the task, location, and visible hazard.",
+                  "Herald checks the safety source pack.",
+                  "If context is missing, Herald asks before deciding.",
+                ]).map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </InfoCard>
+
+            <InfoCard icon={<RadioTower className="h-4 w-4 text-[var(--danger)]" />} title="Supervisor">
+              <p className="text-[13px] leading-relaxed text-muted-foreground">
+                {result?.supervisor?.message ?? "High-risk answers will notify the responsible supervisor."}
+              </p>
+            </InfoCard>
+
+            <InfoCard icon={<BookOpenCheck className="h-4 w-4 text-[var(--gold)]" />} title="Source citations">
+              <div className="grid gap-2">
+                {(result?.citations ?? []).length ? (
+                  result!.citations.map((citation) => (
+                    <div key={`${citation.title}-${citation.source}`} className="rounded-xl bg-[var(--muted)]/60 p-3">
+                      <div className="text-[13px] font-medium text-foreground">{citation.title}</div>
+                      <div className="mt-0.5 text-[11px] font-medium text-[var(--gold)]">{citation.source}</div>
+                      <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">{citation.excerpt}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[13px] text-muted-foreground">Citations appear after Herald answers.</p>
+                )}
+              </div>
+            </InfoCard>
+
+            <InfoCard icon={<ClipboardList className="h-4 w-4 text-foreground/70" />} title="Compliance log">
+              <div className="space-y-1.5 font-mono text-[11.5px] text-foreground/75">
+                {(result?.logs ?? []).slice(0, 4).map((log) => (
+                  <div key={log.id} className="flex items-center justify-between gap-3 rounded-lg bg-[var(--muted)]/50 px-2 py-1.5">
+                    <span>
+                      {log.risk} / {log.ruleId}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {new Date(log.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                ))}
+                {!result?.logs?.length && <span className="text-muted-foreground">No log entries yet.</span>}
+              </div>
+            </InfoCard>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function InfoCard({
+  icon,
+  title,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-4">
+      <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold">
+        {icon}
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}

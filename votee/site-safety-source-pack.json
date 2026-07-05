@@ -1,0 +1,44 @@
+{
+  "channel": "site-safety",
+  "platform": "beever-atlas",
+  "product": "Herald",
+  "positioning": "AI for Physical Workers",
+  "documents": [
+    {
+      "id": "fire-protection-controls",
+      "title": "Site Fire Safety SOP",
+      "topic": "fire alarm impairment",
+      "content": "Fire detection, warning, and evacuation systems must remain available unless a documented temporary impairment procedure is active. Workers must not disable alarms without supervisor approval, temporary controls, and a compliance log."
+    },
+    {
+      "id": "high-risk-escalation",
+      "title": "Supervisor Escalation Rule",
+      "topic": "high-risk worker decisions",
+      "content": "Workers must escalate any request to bypass a safety system. The app should log the worker question, decision, citation, responsible supervisor, and final action."
+    },
+    {
+      "id": "electrical-isolation",
+      "title": "Electrical Isolation SOP",
+      "topic": "live electrical work",
+      "content": "Electrical work begins only after isolation, lockout/tagout, and testing by a competent person. Treat equipment as live until proven otherwise."
+    },
+    {
+      "id": "work-at-height",
+      "title": "Work-at-Height Checklist",
+      "topic": "fall prevention",
+      "content": "Work at height requires suitable access, fall prevention controls, stable footing, inspected equipment, and supervisor review when conditions change."
+    },
+    {
+      "id": "hot-work-permit",
+      "title": "Hot Work Permit SOP",
+      "topic": "hot work",
+      "content": "Hot work requires permit approval, combustible control, extinguishing equipment, and a fire watch before work starts."
+    }
+  ],
+  "demo_questions": [
+    "Can I disable the fire alarm?",
+    "Can I work on this live wire quickly?",
+    "Is this scaffold safe to climb?",
+    "Do we need a permit before welding here?"
+  ]
+}

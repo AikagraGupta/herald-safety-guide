@@ -1,18 +1,16 @@
 // Product UI mockup fragments used across the site.
-// These are visual representations of Herald's operating surfaces — not
-// wired-up components. Keep them dense, calm, and enterprise-serious.
+// These are visual representations of Herald's operating surfaces, not wired-up components.
 
 export function WorkerGuidanceMock() {
   return (
     <div className="panel-lift w-full overflow-hidden rounded-2xl">
-      {/* window chrome */}
       <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--muted)]/60 px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-[var(--danger)]/60" />
           <span className="h-2 w-2 rounded-full bg-[var(--gold)]/60" />
           <span className="h-2 w-2 rounded-full bg-foreground/20" />
           <span className="ml-3 text-[11px] font-medium tracking-wider text-muted-foreground">
-            HERALD · WORKER VIEW · SITE B7-14
+            HERALD · WORKER VIEW · SITE B7-03
           </span>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -22,48 +20,44 @@ export function WorkerGuidanceMock() {
       </div>
 
       <div className="grid gap-0 md:grid-cols-[1.05fr_1fr]">
-        {/* Worker chat side */}
         <div className="border-b border-[var(--border)] p-5 md:border-b-0 md:border-r">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Worker</div>
-              <div className="text-[13.5px] font-medium">Chan Ka Ho · Electrician · Lvl 14</div>
+              <div className="text-[13.5px] font-medium">Chan Ka Ho · Site team · Lvl 3</div>
             </div>
             <div className="text-[11px] text-muted-foreground">粵語 · Cantonese</div>
           </div>
 
-          {/* worker question */}
           <div className="mb-3 rounded-2xl rounded-tl-md bg-[var(--muted)] p-3.5">
             <div className="text-[11px] text-muted-foreground">14:22 · Q1</div>
             <div className="mt-1 text-[14px] leading-relaxed text-foreground">
-              可唔可以熄咗14樓嘅火警系統，等我拉條電纜？
+              我喺三樓走廊見到地上有水漬，推車可唔可以行過去？
               <div className="mt-1 text-[12.5px] text-muted-foreground">
-                “Can I disable the fire alarm on 14/F so I can pull a cable?”
+                “There is water on the 3/F corridor. Can I push the cart through?”
               </div>
             </div>
           </div>
 
-          {/* herald response */}
-          <div className="rounded-2xl rounded-tr-md border border-[var(--danger)]/25 bg-[var(--panel)] p-4">
+          <div className="rounded-2xl rounded-tr-md border border-[var(--gold)]/25 bg-[var(--panel)] p-4">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--danger)]/10 px-2 py-0.5 text-[11px] font-semibold tracking-wider text-[var(--danger)]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[var(--danger)]" /> STOP
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--gold)]/10 px-2 py-0.5 text-[11px] font-semibold tracking-wider text-[var(--gold)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--gold)]" /> CHECK
               </span>
-              <span className="text-[11px] text-muted-foreground">High-risk action · Supervisor notified</span>
+              <span className="text-[11px] text-muted-foreground">Access hazard · Supervisor recommended</span>
             </div>
             <div className="mt-2.5 text-[14px] leading-relaxed">
-              Do not disable the fire detection loop. Under Site SOP B7-014 §3.2 and FSD Code of Practice
-              (2022) Clause 5.4.1, isolation of an active fire system requires a Permit-to-Work signed by
-              the Safety Officer on duty.
+              Control the path before moving the cart. Mark the wet area, keep workers away from the route, and
+              continue only after the floor is dry or a safe alternate path is confirmed.
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              <SourceChip label="SOP B7-014 §3.2" />
-              <SourceChip label="FSD CoP 2022 · 5.4.1" gold />
-              <SourceChip label="Site rule PR-88" />
+              <SourceChip label="Housekeeping SOP §2.1" />
+              <SourceChip label="Access control · Wet floor" gold />
+              <SourceChip label="Site rule HK-21" />
             </div>
             <div className="mt-3 flex items-center gap-2">
               <button className="rounded-full bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)]">
-                Request Permit-to-Work
+                Mark area
               </button>
               <button className="rounded-full border border-[var(--border-strong)] px-3 py-1.5 text-[12px] font-medium">
                 Ask supervisor
@@ -72,7 +66,6 @@ export function WorkerGuidanceMock() {
           </div>
         </div>
 
-        {/* Supervisor / decision side */}
         <div className="bg-[var(--muted)]/40 p-5">
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Escalation</div>
           <div className="mt-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-3.5">
@@ -81,17 +74,17 @@ export function WorkerGuidanceMock() {
               <span className="text-[11px] text-muted-foreground">14:22:04</span>
             </div>
             <div className="mt-1 text-[12.5px] text-muted-foreground">
-              Notified · Fire system isolation request from Lvl 14
+              Notified · Wet access route near 3/F corridor
             </div>
             <div className="mt-2.5 flex gap-1.5">
               <span className="rounded-md bg-emerald-600/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
                 Acknowledge
               </span>
               <span className="rounded-md bg-[var(--danger)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--danger)]">
-                Deny
+                Block route
               </span>
               <span className="rounded-md bg-[var(--gold)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--gold)]">
-                Issue Permit
+                Clear path
               </span>
             </div>
           </div>
@@ -101,19 +94,20 @@ export function WorkerGuidanceMock() {
           </div>
           <div className="mt-2 space-y-1.5 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-3.5 font-mono text-[11.5px] leading-relaxed text-foreground/80">
             <div>
-              <span className="text-muted-foreground">14:22:01</span>  worker.query   fire_alarm.disable
+              <span className="text-muted-foreground">14:22:01</span> worker.query slip_trip.access
             </div>
             <div>
-              <span className="text-muted-foreground">14:22:02</span>  herald.decision  <span className="text-[var(--danger)]">STOP</span>
+              <span className="text-muted-foreground">14:22:02</span> herald.decision{" "}
+              <span className="text-[var(--gold)]">CHECK</span>
             </div>
             <div>
-              <span className="text-muted-foreground">14:22:02</span>  memory.cite    SOP:B7-014§3.2
+              <span className="text-muted-foreground">14:22:02</span> memory.cite SOP:HK-21§2.1
             </div>
             <div>
-              <span className="text-muted-foreground">14:22:03</span>  escalate       sup:WSM-041
+              <span className="text-muted-foreground">14:22:03</span> escalate sup:WSM-041
             </div>
             <div>
-              <span className="text-muted-foreground">14:22:04</span>  audit.append   evt#A-91240
+              <span className="text-muted-foreground">14:22:04</span> audit.append evt#A-91240
             </div>
           </div>
         </div>
@@ -142,9 +136,9 @@ export function SourceChip({ label, gold = false }: { label: string; gold?: bool
 export function SafetyMemoryMock() {
   const packs = [
     { name: "Site SOP · B7 Tower", count: 214, freshness: "Updated 2d ago", tag: "Beever Atlas" },
-    { name: "FSD Code of Practice 2022", count: 96, freshness: "Verified 11d ago", tag: "Regulator" },
-    { name: "Worker Q&A · Electrical", count: 1_284, freshness: "Live capture", tag: "Votee AI" },
-    { name: "Permit-to-Work Templates", count: 42, freshness: "Signed by SO", tag: "Site Ops" },
+    { name: "Access and housekeeping", count: 96, freshness: "Verified 11d ago", tag: "Site Ops" },
+    { name: "Worker Q&A · Field hazards", count: 1_284, freshness: "Live capture", tag: "Votee AI" },
+    { name: "Permit-to-Work Templates", count: 42, freshness: "Signed by SO", tag: "Safety" },
   ];
   return (
     <div className="panel-lift overflow-hidden rounded-2xl">
@@ -167,7 +161,7 @@ export function SafetyMemoryMock() {
             <div className="text-right font-mono text-[12px] text-foreground/70">
               {p.count.toLocaleString()} <span className="text-muted-foreground">chunks</span>
             </div>
-            <SourceChip label={p.tag} gold={p.tag !== "Regulator"} />
+            <SourceChip label={p.tag} gold={p.tag !== "Site Ops"} />
           </div>
         ))}
       </div>
@@ -180,7 +174,7 @@ export function SafetyMemoryMock() {
 
 export function ComplianceLogMock() {
   const rows = [
-    { t: "14:22", w: "Chan K.H.", q: "Disable fire alarm 14/F", d: "STOP", tone: "danger" },
+    { t: "14:22", w: "Chan K.H.", q: "Wet access route 3/F", d: "CHECK", tone: "gold" },
     { t: "13:41", w: "Lee W.C.", q: "Hot work near LPG tank", d: "CHECK", tone: "gold" },
     { t: "12:08", w: "Ng S.L.", q: "Ladder above 3m alone", d: "STOP", tone: "danger" },
     { t: "11:55", w: "Cheung Y.", q: "Torque for M16 bolt", d: "OK", tone: "ok" },

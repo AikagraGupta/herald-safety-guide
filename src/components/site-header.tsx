@@ -46,7 +46,7 @@ export function SiteHeader() {
         className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-[var(--border)] bg-[color-mix(in_oklab,var(--panel)_92%,transparent)] px-3 py-2 pl-5 backdrop-blur-md"
         style={{ boxShadow: "0 1px 2px rgba(20,39,68,0.04), 0 12px 32px -20px rgba(20,39,68,0.18)" }}
       >
-        <Link to="/" className="flex items-center gap-2.5">
+        <Link to="/" className="flex min-h-10 items-center gap-2.5">
           <HeraldMark />
           <span className="text-[15px] font-semibold tracking-tight text-foreground">Herald</span>
           <span className="hidden text-[11px] font-medium tracking-wider text-muted-foreground sm:inline">
@@ -89,16 +89,16 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2">
           <a
-            href="#contact"
-            className="hidden rounded-full px-3.5 py-1.5 text-[13.5px] font-medium text-foreground/85 hover:text-foreground sm:inline-block"
+            href="#live-demo"
+            className="hidden min-h-10 items-center rounded-full px-3.5 py-2 text-[13.5px] font-medium text-foreground/85 hover:text-foreground sm:inline-flex"
           >
-            Sign in
+            Try scenario
           </a>
           <a
-            href="#contact"
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 text-[13.5px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
+            href="#live-demo"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 text-[13.5px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
           >
-            Book a Demo
+            Run Demo
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
               <path d="M2.5 6h7M6 2.5 9.5 6 6 9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>

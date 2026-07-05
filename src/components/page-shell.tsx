@@ -37,7 +37,7 @@ export function PageHeader({
 
 export function CTAStrip() {
   return (
-    <section id="contact" className="mx-auto max-w-7xl px-6 py-20">
+    <section className="mx-auto max-w-7xl px-6 py-20">
       <div
         className="panel-lift overflow-hidden rounded-3xl"
         style={{ backgroundColor: "var(--primary)" }}
@@ -45,22 +45,22 @@ export function CTAStrip() {
         <div className="grid gap-8 p-10 md:grid-cols-[1.4fr_1fr] md:p-14">
           <div className="text-[var(--primary-foreground)]">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--gold)]">
-              Talk to Herald
+              Hackathon demo
             </div>
             <h2 className="h-display mt-3 text-3xl md:text-4xl">
               Give every worker an expert in their ear.
             </h2>
             <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-[color-mix(in_oklab,var(--primary-foreground)_75%,transparent)]">
-              A 30-minute walkthrough with a Herald engineer. See STOP/CHECK routing, cited safety memory,
-              supervisor escalation, and the compliance log on real site scenarios.
+              Run the fire-alarm scenario live. Herald blocks the action, cites the Votee source pack,
+              notifies the supervisor, and writes the compliance log.
             </p>
           </div>
           <div className="flex flex-col items-start justify-center gap-3 md:items-end">
             <a
-              href="mailto:demo@herald.site"
+              href="#live-demo"
               className="inline-flex items-center gap-2 rounded-full bg-[var(--gold)] px-5 py-2.5 text-[14px] font-medium text-[var(--gold-foreground)]"
             >
-              Book a Demo
+              Run Live Demo
               <Arrow />
             </a>
             <Link
